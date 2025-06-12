@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatTab, ChatHistoryItem, UserSettings } from '../types';
 import { useToast } from './use-toast';
+import { Howl, Howler } from 'howler';//Import the howler library for sound effects.
 
 export const useChat = (userSettings: UserSettings) => {
   const location = useLocation();
@@ -15,6 +16,24 @@ export const useChat = (userSettings: UserSettings) => {
   const [activeTabId, setActiveTabId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [inputValue, setInputValue] = useState('');
+
+const sound_new_chat = new Howl({// We declare a new chat sound we want to use with howler on our script
+  src: ['/sounds/new_chat_alert.mp3'],
+  volume: 0.7, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+  loop: false
+  });
+
+  const sound_send = new Howl({ //We declare a new send sound we want to use with howler on our script
+  src: ['/sounds/send_sound.mp3'],
+  volume: 0.7, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+  loop: false
+  });
+
+  const sound_generate_message = new Howl({// We declare a new chat sound we want to use with howler on our script
+  src: ['/sounds/generate_message.mp3'],
+  volume: 0.7, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+  loop: false
+  });
 
   // Load chat history from localStorage
   useEffect(() => {
@@ -110,6 +129,7 @@ export const useChat = (userSettings: UserSettings) => {
   // Handle form submission
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
+    sound_send.play();
     if (!inputValue.trim() || !activeTabId) return;
 
     const updatedTabs = tabs.map(tab => {
@@ -138,6 +158,7 @@ export const useChat = (userSettings: UserSettings) => {
     setTimeout(() => {
       setTabs(prevTabs => prevTabs.map(tab => {
         if (tab.id === activeTabId) {
+          sound_generate_message.play();
           return {
             ...tab,
             messages: [
@@ -195,6 +216,7 @@ export const useChat = (userSettings: UserSettings) => {
     const updatedHistory = [newChatHistoryItem, ...chatHistory];
     setChatHistory(updatedHistory);
     localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+    sound_new_chat.play();//Play sound when opening a new chat
   }, [tabs, chatHistory]);
 
   // Close a tab
@@ -296,3 +318,10 @@ export const useChat = (userSettings: UserSettings) => {
     navigate
   ]);
 }; 
+//Line 5 import Howler
+//Line 20-24 we declare the new chat sound.
+//Line 26-30 we declare the send sound.
+//Line 32-37 we declare the generate message sound.
+//Line 127 send_sound.play();
+//Line 161 sound_generate_message.play();
+//Line 213 new_chat.sound();

@@ -6,13 +6,22 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChatHistoryItem, ChatTab } from '../types';
 import { cn } from '@/lib/utils';
 import FileUploadMenu from './FileUploadMenu';
+import { Howl, Howler } from 'howler';//Import the howler library for sound effects.
 
 const Search = () => {
   const [searchInput, setSearchInput] = useState("");
   const navigate = useNavigate();
 
+  // We declare a sound we want to use with howler on our script
+      const sound_send = new Howl({
+      src: ['/sounds/send_sound.mp3'],
+      volume: 0.7, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+      loop: false
+      });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    sound_send.play();
     if (searchInput.trim()) {
       // Create a new chat history item
       const newChatId = uuidv4();
@@ -179,6 +188,7 @@ const Search = () => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleSubmit(e);
+                    sound_send.play();
                   }
                 }}
                 rows={1}
@@ -226,3 +236,7 @@ const Search = () => {
 };
 
 export default Search;
+
+//Line 9 import Howler.
+//Line 15-21 We declare the Howler send sound.
+//Line 190 send_sound.play();

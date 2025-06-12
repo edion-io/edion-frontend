@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Slider } from '@/components/ui/slider';
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -46,6 +47,9 @@ const Settings = () => {
   // Notification settings
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [desktopNotifications, setDesktopNotifications] = useState(true);
+
+// Sound settings
+  const [soundsEnabled, toggleSoundEffects] = useState(true);
 
   useEffect(() => {
     const settings = getUserSettingsFromStorage();
@@ -286,6 +290,51 @@ const Settings = () => {
                     onCheckedChange={setDesktopNotifications}
                   />
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        
+        
+          {/* Sounds section */}
+          <Card>
+            <CardContent className='p-6'>
+              {/* Titulo de la carta */}
+              <div className="flex items-center gap-3 mb-6">
+                <Speaker className="h-5 w-5 text-muted-foreground" />
+                <h2 className="text-lg font-medium">Sounds</h2>
+              </div>
+              {/* Contenido de la carta */}
+              <div className="space-y-4">
+                {/* Apartado en la carta */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Enable/Disable</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Activate or desactivate the sounds.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={soundsEnabled}
+                    onCheckedChange={toggleSoundEffects}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Bar</Label>
+                    <p className="text-sm text-muted-foreground"> 
+                     Volume
+                    </p>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={1}
+                    step={0.1}
+                  />
+                </div>
+
               </div>
             </CardContent>
           </Card>
