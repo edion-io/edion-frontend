@@ -745,7 +745,7 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
       }
     }
     
-    // Handle Backspace key for list item deletion
+    // Handle Backspace and Delete keys
     if (e.key === 'Backspace' || e.key === 'Delete') {
       const selection = window.getSelection();
       if (!selection || !selection.rangeCount) return;
@@ -782,12 +782,14 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
         return;
       }
       
-      // Handle backspace at the beginning of indented paragraphs
+      // Prevent Delete/Backspace from removing indentation on paragraphs
+      // Check if we're at the beginning/end of an indented paragraph
       const isAtBeginning = range.startOffset === 0;
-      const hasSelection = !range.collapsed; // Check if there's actually selected text
+      const isAtEnd = range.startOffset === (range.startContainer.textContent?.length || 0);
+      const hasSelection = !range.collapsed;
       
-      if (isAtBeginning && e.key === 'Backspace' && !hasSelection) {
-        // Find if we're in a paragraph or other block element
+      if (!hasSelection && ((e.key === 'Backspace' && isAtBeginning) || (e.key === 'Delete' && isAtEnd))) {
+        // Find if we're in an indented paragraph or other block element
         let node = range.startContainer;
         let paragraph = null;
         
@@ -808,26 +810,34 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
           node = node.parentNode;
         }
         
-        // If we found a paragraph and it has padding-left, reduce it
+        // If we found an indented paragraph, prevent the key from removing indentation
         if (paragraph && paragraph.style && paragraph.style.paddingLeft) {
           const currentPadding = parseInt(paragraph.style.paddingLeft, 10) || 0;
           if (currentPadding > 0) {
-            // Reduce padding by TAB_INDENT_STEP_PX
-            const newPadding = Math.max(0, currentPadding - TAB_INDENT_STEP_PX);
-            if (newPadding === 0) {
-              paragraph.style.removeProperty('padding-left');
-            } else {
-              paragraph.style.paddingLeft = `${newPadding}px`;
+            // Check if this would result in removing indentation by checking adjacent elements
+            let wouldRemoveIndent = false;
+            
+            if (e.key === 'Backspace' && isAtBeginning) {
+              // Check if there's a previous element that would merge and lose indentation
+              const prevElement = paragraph.previousElementSibling;
+              if (!prevElement || !prevElement.style?.paddingLeft || 
+                  parseInt(prevElement.style.paddingLeft, 10) !== currentPadding) {
+                wouldRemoveIndent = true;
+              }
+            } else if (e.key === 'Delete' && isAtEnd) {
+              // Check if there's a next element that would merge and lose indentation
+              const nextElement = paragraph.nextElementSibling;
+              if (!nextElement || !nextElement.style?.paddingLeft || 
+                  parseInt(nextElement.style.paddingLeft, 10) !== currentPadding) {
+                wouldRemoveIndent = true;
+              }
             }
             
-            // Prevent default backspace behavior
-            e.preventDefault();
-            
-            // Update content
-            if (editorRef.current) {
-              onChange(editorRef.current.innerHTML);
+            if (wouldRemoveIndent) {
+              // Prevent the default behavior that would remove indentation
+              e.preventDefault();
+              return;
             }
-            return;
           }
         }
       }
@@ -914,9 +924,13 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               
               // Apply indentation to the paragraph
               const data = itemsData[index];
-              if (data.indentLevel && data.indentLevel !== '0px' && data.indentLevel !== '0') {
+              
+              // First try to use --indent-level (preferred method)
+              if (data.indentLevel && data.indentLevel.trim() !== '' && data.indentLevel !== '0px' && data.indentLevel !== '0') {
                 p.style.paddingLeft = data.indentLevel; // Convert to padding-left
-              } else if (data.paddingLeft) {
+              } 
+              // Fallback to direct paddingLeft
+              else if (data.paddingLeft && data.paddingLeft.trim() !== '' && data.paddingLeft !== '0px' && data.paddingLeft !== '0') {
                 p.style.paddingLeft = data.paddingLeft;
               }
               
@@ -973,9 +987,9 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               p.innerHTML = '<br>'; // Empty paragraph needs BR to be visible
               
               // Apply indentation to the paragraph
-              if (indentLevel && indentLevel !== '0px' && indentLevel !== '0') {
+              if (indentLevel && indentLevel.trim() !== '' && indentLevel !== '0px' && indentLevel !== '0') {
                 p.style.paddingLeft = indentLevel; // Convert to padding-left
-              } else if (paddingLeft) {
+              } else if (paddingLeft && paddingLeft.trim() !== '' && paddingLeft !== '0px' && paddingLeft !== '0') {
                 p.style.paddingLeft = paddingLeft;
               }
               
@@ -1089,9 +1103,9 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
             const listAlignment = (list as HTMLElement).style.textAlign || '';
             
             // Apply indentation to the paragraph
-            if (indentLevel && indentLevel !== '0px' && indentLevel !== '0') {
+            if (indentLevel && indentLevel.trim() !== '' && indentLevel !== '0px' && indentLevel !== '0') {
               p.style.paddingLeft = indentLevel; // Convert to padding-left
-            } else if (paddingLeft) {
+            } else if (paddingLeft && paddingLeft.trim() !== '' && paddingLeft !== '0px' && paddingLeft !== '0') {
               p.style.paddingLeft = paddingLeft;
             }
             

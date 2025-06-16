@@ -690,6 +690,26 @@ const EditorToolbar = ({
       if (editorHasFocusRef.current) {
         updateFormatStates();
       }
+      
+      // Debug selection changes during list operations
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const isInEditor = editorRef.current?.contains(range.startContainer);
+        
+        if (isInEditor) {
+          // Only log if we have a special debug flag set
+          if ((window as any).__debugListOperations) {
+            console.log('👁️ SELECTION CHANGE:', {
+              startContainer: range.startContainer,
+              startOffset: range.startOffset,
+              nodeType: range.startContainer.nodeType,
+              textContent: range.startContainer.textContent,
+              parentElement: range.startContainer.parentElement?.tagName
+            });
+          }
+        }
+      }
     };
     
     // Update format states initially
@@ -1011,6 +1031,7 @@ const EditorToolbar = ({
       const itemsData = listItems.map(item => {
         return {
           html: item.innerHTML,
+          textContent: item.textContent,
           indentLevel: item.style.getPropertyValue('--indent-level'),
           paddingLeft: item.style.paddingLeft
         };
@@ -1019,124 +1040,109 @@ const EditorToolbar = ({
       // Get alignment of the current list
       const currentAlign = currentList.style.textAlign || '';
       
-      // Remove the list formatting WITHOUT selecting the entire list
-      // Instead, just use the execCommand which will work with current selection
-      document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+      // Store current selection details
+      const currentRange = selection.getRangeAt(0);
+      const currentOffset = currentRange.startOffset;
+      const currentContainer = currentRange.startContainer;
       
-      // Find the paragraphs that were created
-      const paragraphs = Array.from(editorRef.current.querySelectorAll('p'));
-      const newlyCreatedParagraphs = paragraphs.filter(p => {
-        // Simple heuristic: if it's a direct child of the editor or near the selection
-        const isDirectChild = p.parentNode === editorRef.current;
-        const containsSelection = selection.containsNode(p, true);
-        return isDirectChild || containsSelection;
+      // Manual conversion instead of execCommand to preserve cursor position
+      const fragment = document.createDocumentFragment();
+      
+      // Convert each list item to a paragraph
+      listItems.forEach((listItem, index) => {
+        const paragraph = document.createElement('p');
+        
+        // Preserve the list item's content - improved content handling
+        const originalContent = listItem.innerHTML;
+        const originalTextContent = listItem.textContent || '';
+        
+        // Handle empty or minimal content - use BR for empty paragraphs as it's more stable
+        if (!originalContent || originalContent.trim() === '' || originalContent === '<br>' || originalContent === '&nbsp;') {
+          // For empty content, use BR tag which is stable in contentEditable
+          paragraph.innerHTML = '<br>';
+        } else {
+          paragraph.innerHTML = originalContent;
+        }
+        
+        // Apply indentation from list item - improved logic
+        const data = itemsData[index];
+        
+        // First try to use --indent-level (preferred method)
+        if (data.indentLevel && data.indentLevel.trim() !== '' && data.indentLevel !== '0px' && data.indentLevel !== '0') {
+          paragraph.style.paddingLeft = data.indentLevel;
+        } 
+        // Fallback to direct paddingLeft
+        else if (data.paddingLeft && data.paddingLeft.trim() !== '' && data.paddingLeft !== '0px' && data.paddingLeft !== '0') {
+          paragraph.style.paddingLeft = data.paddingLeft;
+        }
+        
+        // Apply alignment if the list had it
+        if (currentAlign && currentAlign !== 'left' && currentAlign !== 'start') {
+          paragraph.style.textAlign = currentAlign;
+        }
+        
+        fragment.appendChild(paragraph);
       });
       
-      // Apply indentation and alignment to new paragraphs
-      if (newlyCreatedParagraphs.length === itemsData.length) {
-        // We have a direct mapping
-        newlyCreatedParagraphs.forEach((p, index) => {
-          const data = itemsData[index];
-          
-          // Apply indentation
-          if (data.indentLevel && data.indentLevel !== '0px' && data.indentLevel !== '0') {
-            p.style.paddingLeft = data.indentLevel; // Convert to padding-left
-          } else if (data.paddingLeft) {
-            p.style.paddingLeft = data.paddingLeft;
-          }
-          
-          // Apply alignment
-          if (currentAlign && currentAlign !== 'left' && currentAlign !== 'start') {
-            p.style.textAlign = currentAlign;
-          }
-        });
-      } else {
-        // Fallback if we can't map 1:1 - just apply to all created paragraphs
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const paragraph = range.startContainer.nodeType === Node.TEXT_NODE 
-            ? range.startContainer.parentElement
-            : range.startContainer as HTMLElement;
-          
-          if (paragraph && paragraph.tagName === 'P') {
-            // Apply indentation from first list item (best effort)
-            if (itemsData.length > 0) {
-              const firstItemData = itemsData[0];
-              if (firstItemData.indentLevel && firstItemData.indentLevel !== '0px' && firstItemData.indentLevel !== '0') {
-                paragraph.style.paddingLeft = firstItemData.indentLevel;
-              } else if (firstItemData.paddingLeft) {
-                paragraph.style.paddingLeft = firstItemData.paddingLeft;
-              }
-            }
-            
-            // Apply alignment
-            if (currentAlign && currentAlign !== 'left' && currentAlign !== 'start') {
-              paragraph.style.textAlign = currentAlign;
-            }
-          }
-        }
+      // Find which paragraph should contain the cursor
+      let targetParagraph = fragment.children[cursorListItemIndex] as HTMLElement;
+      if (!targetParagraph && fragment.children.length > 0) {
+        targetParagraph = fragment.children[0] as HTMLElement;
       }
       
-      // Restore cursor position to the equivalent position in the new paragraphs
-      setTimeout(() => {
-        // Find the paragraph that corresponds to the original list item
-        let targetParagraph = null;
-        
-        if (cursorListItemIndex >= 0 && cursorListItemIndex < newlyCreatedParagraphs.length) {
-          targetParagraph = newlyCreatedParagraphs[cursorListItemIndex];
-        } else if (newlyCreatedParagraphs.length > 0) {
-          // Fallback to first paragraph
-          targetParagraph = newlyCreatedParagraphs[0];
-        }
-        
-        if (targetParagraph) {
-          // Find text nodes in the paragraph
-          const walker = document.createTreeWalker(
-            targetParagraph,
-            NodeFilter.SHOW_TEXT,
-            null
-          );
-          
-          let firstTextNode = null;
-          let lastTextNode = null;
-          let textNode = null;
-          
-          while (textNode = walker.nextNode() as Text) {
-            if (!firstTextNode) {
-              firstTextNode = textNode;
-            }
-            lastTextNode = textNode;
-          }
-          
-          // Place cursor based on stored position
-          if (firstTextNode) {
-            const range = document.createRange();
-            
-            if (cursorPosition === 'beginning') {
-              range.setStart(firstTextNode, 0);
-            } else if (cursorPosition === 'end' && lastTextNode) {
-              range.setStart(lastTextNode, lastTextNode.textContent?.length || 0);
-            } else {
-              // Default to beginning
-              range.setStart(firstTextNode, 0);
-            }
-            
-            range.collapse(true);
-            selection.removeAllRanges();
-            selection.addRange(range);
-            
-            // Ensure the paragraph is visible
-            targetParagraph.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-          }
-        }
-      }, 10);
+      // Replace the list with the paragraphs
+      currentList.parentNode?.replaceChild(fragment, currentList);
       
-      // Update content
+
+      
+      // Update content FIRST
       if (editorRef.current) {
         const event = new Event('input', { bubbles: true });
         editorRef.current.dispatchEvent(event);
       }
+      
+                    // THEN handle cursor positioning in a separate microtask to avoid interference
+       setTimeout(() => {
+          if (editorRef.current) {
+            // Find the first paragraph with the matching indentation
+            const paragraphs = editorRef.current.querySelectorAll('p');
+            let actualTargetParagraph: HTMLElement | null = null;
+            
+            // Look for a paragraph with matching padding (indentation)
+            const targetPaddingLeft = itemsData[cursorListItemIndex]?.indentLevel || itemsData[cursorListItemIndex]?.paddingLeft || '';
+            
+            for (let i = 0; i < paragraphs.length; i++) {
+              const p = paragraphs[i] as HTMLElement;
+              const pPadding = p.style.paddingLeft || '';
+              
+              // Match by indentation and being empty (BR only)
+              if (pPadding === targetPaddingLeft && (p.innerHTML === '<br>' || p.textContent?.trim() === '')) {
+                actualTargetParagraph = p;
+                break;
+              }
+            }
+            
+            // Fallback to first paragraph
+            if (!actualTargetParagraph && paragraphs.length > 0) {
+              actualTargetParagraph = paragraphs[0] as HTMLElement;
+            }
+            
+            if (actualTargetParagraph) {
+              // Set cursor to the paragraph - simple and reliable
+              const range = document.createRange();
+              const selection = window.getSelection();
+              
+              // For BR-only paragraphs, position cursor at the beginning of the paragraph
+              range.setStart(actualTargetParagraph, 0);
+              range.collapse(true);
+              selection?.removeAllRanges();
+              selection?.addRange(range);
+              
+              // Focus the editor
+              editorRef.current.focus();
+            }
+          }
+        }, 0);
       
       return;
     }
@@ -1200,50 +1206,45 @@ const EditorToolbar = ({
 
         // If list has alignment, we need to preserve it
         if (alignmentToTransfer && alignmentToTransfer !== 'left' && alignmentToTransfer !== 'start') {
-          // Method 1: Direct approach to apply alignment to each list item content
-          const items = Array.from(currentList.querySelectorAll('li'));
-          const contents = items.map(item => (item as HTMLElement).innerHTML);
-          
-          // Remove the list but keep the content
+          // First remove the current list type, then add the new list type
+          document.execCommand(currentListType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
           document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
 
-          // NEW - re-apply previous alignment to the new list
-          {
-            const sel = window.getSelection();
-            let list: HTMLElement | null = null;
+          // Find the newly created list and apply alignment
+          const sel = window.getSelection();
+          let list: HTMLElement | null = null;
 
-            if (sel?.anchorNode) {
-              let n: Node | null = sel.anchorNode;
-              while (n && n !== editorRef.current) {
-                if (
-                  n.nodeType === Node.ELEMENT_NODE &&
-                  ((n as HTMLElement).tagName === 'UL' || (n as HTMLElement).tagName === 'OL')
-                ) {
-                  list = n as HTMLElement;
-                  break;
-                }
-                n = n.parentNode;
+          if (sel?.anchorNode) {
+            let n: Node | null = sel.anchorNode;
+            while (n && n !== editorRef.current) {
+              if (
+                n.nodeType === Node.ELEMENT_NODE &&
+                ((n as HTMLElement).tagName === 'UL' || (n as HTMLElement).tagName === 'OL')
+              ) {
+                list = n as HTMLElement;
+                break;
               }
+              n = n.parentNode;
             }
+          }
 
-            if (list) {
-              list.style.textAlign = alignmentToTransfer;
+          if (list) {
+            list.style.textAlign = alignmentToTransfer;
 
-              list.querySelectorAll('li').forEach(liNode => {
-                const li = liNode as HTMLElement;
+            list.querySelectorAll('li').forEach(liNode => {
+              const li = liNode as HTMLElement;
 
-                if (list.tagName === 'UL') {
-                  li.style.listStylePosition = 'inside';
-                }
-                li.style.removeProperty('justify-content');
+              if (list.tagName === 'UL') {
+                li.style.listStylePosition = 'inside';
+              }
+              li.style.removeProperty('justify-content');
 
-                if (alignmentToTransfer === 'center') {
-                  li.style.justifyContent = 'center';
-                } else if (alignmentToTransfer === 'right') {
-                  li.style.justifyContent = 'flex-end';
-                }
-              });
-            }
+              if (alignmentToTransfer === 'center') {
+                li.style.justifyContent = 'center';
+              } else if (alignmentToTransfer === 'right') {
+                li.style.justifyContent = 'flex-end';
+              }
+            });
           }
           
           // Find all paragraphs that were created from the list items
@@ -1303,7 +1304,9 @@ const EditorToolbar = ({
             editorRef.current.style.transition = 'none';
           }
           
-          // Standard removal for left-aligned lists, but preserve indentation
+          // Standard conversion for left-aligned lists, but preserve indentation
+          // First remove the current list type, then add the new list type
+          document.execCommand(currentListType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
           document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
           
           // Immediately find and fix the new list (no setTimeout)
@@ -1551,17 +1554,11 @@ const EditorToolbar = ({
         // Remember alignment of the current list
         const currentAlign = currentList.style.textAlign;
         
-        // 2. Remove the current list
-        const range = document.createRange();
-        range.selectNode(currentList);
-        selection.removeAllRanges();
-        selection.addRange(range);
+        // 2. Convert list type by first removing current type, then adding new type
         document.execCommand(currentList.tagName === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-        
-        // 3. Create the new list type
         document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
         
-        // 4. Find the newly created list
+        // 3. Find the newly created list
         let newList = null;
         const currentNode = selection.anchorNode;
         if (currentNode) {
@@ -1578,7 +1575,7 @@ const EditorToolbar = ({
           }
         }
         
-        // 5. If we found the new list, restore content and marker formatting
+        // 4. If we found the new list, restore content and marker formatting
         if (newList) {
           // Disable transitions on the editor and list immediately
           const originalEditorTransition = editorRef.current?.style.transition;
