@@ -810,31 +810,61 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
           node = node.parentNode;
         }
         
-        // If we found an indented paragraph, prevent the key from removing indentation
-        if (paragraph && paragraph.style && paragraph.style.paddingLeft) {
+        // If we found a paragraph with formatting (indentation or alignment), prevent the key from removing it
+        if (paragraph && paragraph.style) {
           const currentPadding = parseInt(paragraph.style.paddingLeft, 10) || 0;
-          if (currentPadding > 0) {
-            // Check if this would result in removing indentation by checking adjacent elements
-            let wouldRemoveIndent = false;
+          const currentAlignment = paragraph.style.textAlign || '';
+          
+          // Check if paragraph has indentation or non-default alignment
+          const hasIndentation = currentPadding > 0;
+          const hasAlignment = currentAlignment && currentAlignment !== 'left' && currentAlignment !== 'start';
+          
+          if (hasIndentation || hasAlignment) {
+            // Check if this would result in removing formatting by checking adjacent elements
+            let wouldRemoveFormatting = false;
             
             if (e.key === 'Backspace' && isAtBeginning) {
-              // Check if there's a previous element that would merge and lose indentation
+              // Check if there's a previous element that would merge and lose formatting
               const prevElement = paragraph.previousElementSibling;
-              if (!prevElement || !prevElement.style?.paddingLeft || 
-                  parseInt(prevElement.style.paddingLeft, 10) !== currentPadding) {
-                wouldRemoveIndent = true;
+              if (!prevElement || !prevElement.style) {
+                wouldRemoveFormatting = true;
+              } else {
+                const prevPadding = parseInt(prevElement.style.paddingLeft, 10) || 0;
+                const prevAlignment = prevElement.style.textAlign || '';
+                
+                // Check if indentation would be lost
+                if (hasIndentation && prevPadding !== currentPadding) {
+                  wouldRemoveFormatting = true;
+                }
+                
+                // Check if alignment would be lost
+                if (hasAlignment && prevAlignment !== currentAlignment) {
+                  wouldRemoveFormatting = true;
+                }
               }
             } else if (e.key === 'Delete' && isAtEnd) {
-              // Check if there's a next element that would merge and lose indentation
+              // Check if there's a next element that would merge and lose formatting
               const nextElement = paragraph.nextElementSibling;
-              if (!nextElement || !nextElement.style?.paddingLeft || 
-                  parseInt(nextElement.style.paddingLeft, 10) !== currentPadding) {
-                wouldRemoveIndent = true;
+              if (!nextElement || !nextElement.style) {
+                wouldRemoveFormatting = true;
+              } else {
+                const nextPadding = parseInt(nextElement.style.paddingLeft, 10) || 0;
+                const nextAlignment = nextElement.style.textAlign || '';
+                
+                // Check if indentation would be lost
+                if (hasIndentation && nextPadding !== currentPadding) {
+                  wouldRemoveFormatting = true;
+                }
+                
+                // Check if alignment would be lost
+                if (hasAlignment && nextAlignment !== currentAlignment) {
+                  wouldRemoveFormatting = true;
+                }
               }
             }
             
-            if (wouldRemoveIndent) {
-              // Prevent the default behavior that would remove indentation
+            if (wouldRemoveFormatting) {
+              // Prevent the default behavior that would remove formatting
               e.preventDefault();
               return;
             }
@@ -1169,7 +1199,8 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
       paragraphs.forEach(paragraph => {
         const element = paragraph as HTMLElement;
         // If paragraph is completely empty or only contains whitespace
-        if (!element.textContent?.trim() && !element.querySelector('br, math-field, img, table')) {
+        // BUT EXCLUDE paragraphs that contain lists (ul, ol), as they are not truly empty
+        if (!element.textContent?.trim() && !element.querySelector('br, math-field, img, table, ul, ol')) {
           // Ensure it has a BR tag for cursor visibility
           if (!element.querySelector('br')) {
             element.innerHTML = '<br>';

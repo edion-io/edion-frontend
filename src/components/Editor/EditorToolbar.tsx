@@ -834,19 +834,51 @@ const EditorToolbar = ({
       return;
     }
     
-    // Find if we're in a list
+    // Find if we're in a list - improved detection for empty list items
     let listElement = null;
+    let listItem = null;
     let node = selection.anchorNode;
     
+    // First, find both the list element and list item
     while (node && node !== editorRef.current) {
       if (node.nodeType === Node.ELEMENT_NODE) {
         const element = node as HTMLElement;
+        
+        if (element.tagName === 'LI' && !listItem) {
+          listItem = element;
+        }
         if (element.tagName === 'UL' || element.tagName === 'OL') {
           listElement = element;
           break;
         }
       }
       node = node.parentNode;
+    }
+    
+    // Additional check: if we didn't find a list but we're at the range boundary,
+    // check if the range intersects with any list in the editor
+    if (!listElement && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const allLists = editorRef.current.querySelectorAll('ul, ol');
+      
+      for (const list of allLists) {
+        // Check if the selection range intersects with this list
+        if (range.intersectsNode(list)) {
+          listElement = list as HTMLElement;
+          
+          // Also find the specific list item if we haven't already
+          if (!listItem) {
+            const listItems = list.querySelectorAll('li');
+            for (const item of listItems) {
+              if (range.intersectsNode(item)) {
+                listItem = item as HTMLElement;
+                break;
+              }
+            }
+          }
+          break;
+        }
+      }
     }
     
     // Also check what element we're directly in
