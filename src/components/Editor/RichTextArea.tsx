@@ -1676,7 +1676,14 @@ const styles = `
 
 /* Math fields */
 .rich-text-editor math-field {
+  /* Smooth style transitions */
   transition: all 0.2s ease-in-out;
+  /* Keep math content inline with surrounding text */
+  display: inline-block;
+  vertical-align: middle;
+  font-size: 1em;
+  line-height: 0; /* ensures the element itself doesn't contribute extra line height */
+  margin: 0 0.1em; /* small spacing like normal characters */
 }
 
 /* Add CSS transitions for padding-left on block elements */
