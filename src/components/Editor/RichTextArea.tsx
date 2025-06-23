@@ -788,38 +788,56 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
       const isAtEnd = range.startOffset === (range.startContainer.textContent?.length || 0);
       const hasSelection = !range.collapsed;
       
-      if (!hasSelection && ((e.key === 'Backspace' && isAtBeginning) || (e.key === 'Delete' && isAtEnd))) {
-        // Find if we're in an indented paragraph or other block element
-        let node = range.startContainer;
-        let paragraph = null;
-        
-        // If we're directly in a text node, get its parent
-        if (node.nodeType === Node.TEXT_NODE) {
-          node = node.parentNode;
-        }
-        
-        // Check if we're in a paragraph or other block element
-        while (node && node !== editorRef.current) {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const element = node as HTMLElement;
-            if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) {
-              paragraph = element;
-              break;
+                      if (!hasSelection && ((e.key === 'Backspace' && isAtBeginning) || (e.key === 'Delete' && isAtEnd))) {
+          // Find if we're in an indented paragraph or other block element
+          let node = range.startContainer;
+          let paragraph = null;
+          let isInList = false;
+          
+          // If we're directly in a text node, get its parent
+          if (node.nodeType === Node.TEXT_NODE) {
+            node = node.parentNode;
+          }
+          
+          // Check if we're in a list first
+          let checkNode = node;
+          while (checkNode && checkNode !== editorRef.current) {
+            if (checkNode.nodeType === Node.ELEMENT_NODE) {
+              const element = checkNode as HTMLElement;
+              if (element.tagName === 'LI' || element.tagName === 'UL' || element.tagName === 'OL') {
+                isInList = true;
+                break;
+              }
+            }
+            checkNode = checkNode.parentNode;
+          }
+          
+          // Only check for paragraph protection if we're NOT in a list
+          if (!isInList) {
+            // Check if we're in a paragraph or other block element
+            while (node && node !== editorRef.current) {
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node as HTMLElement;
+                if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) {
+                  paragraph = element;
+                  break;
+                }
+              }
+              node = node.parentNode;
             }
           }
-          node = node.parentNode;
-        }
         
-        // If we found a paragraph with formatting (indentation or alignment), prevent the key from removing it
-        if (paragraph && paragraph.style) {
-          const currentPadding = parseInt(paragraph.style.paddingLeft, 10) || 0;
-          const currentAlignment = paragraph.style.textAlign || '';
-          
-          // Check if paragraph has indentation or non-default alignment
-          const hasIndentation = currentPadding > 0;
-          const hasAlignment = currentAlignment && currentAlignment !== 'left' && currentAlignment !== 'start';
-          
-          if (hasIndentation || hasAlignment) {
+                  // If we found a paragraph with formatting (indentation or alignment), prevent the key from removing it
+          // But only if we're not in a list (lists handle their own formatting)
+          if (paragraph && paragraph.style && !isInList) {
+            const currentPadding = parseInt(paragraph.style.paddingLeft, 10) || 0;
+            const currentAlignment = paragraph.style.textAlign || '';
+            
+            // Check if paragraph has indentation or non-default alignment
+            const hasIndentation = currentPadding > 0;
+            const hasAlignment = currentAlignment && currentAlignment !== 'left' && currentAlignment !== 'start';
+            
+            if (hasIndentation || hasAlignment) {
             // Check if this would result in removing formatting by checking adjacent elements
             let wouldRemoveFormatting = false;
             
@@ -891,43 +909,49 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
         node = node.parentNode;
       }
       
-      // If we found a list item and we're at the beginning of it
-      if (listItem && list) {
-        // Check if we're at the beginning of the list item's content
-        let isAtStart = false;
-        
-        // For text nodes, check if we're at the beginning
-        if (range.startContainer.nodeType === Node.TEXT_NODE) {
-          isAtStart = range.startOffset === 0;
+              // If we found a list item and we're at the beginning of it
+        if (listItem && list) {
+          // Check if we're at the beginning of the list item's content
+          let isAtStart = false;
           
-          // If we're at the start of a text node, make sure it's the first text node
-          if (isAtStart) {
-            const walker = document.createTreeWalker(
-              listItem,
-              NodeFilter.SHOW_TEXT,
-              null
-            );
+          // For text nodes, check if we're at the beginning
+          if (range.startContainer.nodeType === Node.TEXT_NODE) {
+            isAtStart = range.startOffset === 0;
             
-            const firstTextNode = walker.nextNode();
-            isAtStart = firstTextNode === range.startContainer;
+            // If we're at the start of a text node, make sure it's the first text node
+            if (isAtStart) {
+              const walker = document.createTreeWalker(
+                listItem,
+                NodeFilter.SHOW_TEXT,
+                null
+              );
+              
+              const firstTextNode = walker.nextNode();
+              isAtStart = firstTextNode === range.startContainer;
+            }
+          } 
+          // For element nodes, check if we're at the first position
+          else if (range.startContainer === listItem) {
+            isAtStart = range.startOffset === 0;
           }
-        } 
-        // For element nodes, check if we're at the first position
-        else if (range.startContainer === listItem) {
-          isAtStart = range.startOffset === 0;
-        }
-        
-        // Check if the list item is empty or contains only a non-breaking space
-        const isEmpty = !listItem.textContent || 
-                        listItem.textContent === '\u00A0' || 
-                        listItem.textContent === '\u200B' ||
-                        listItem.innerHTML === '<br>';
-        
-        // If we're at the start of a list item
-        if (isAtStart) {
-          // Add special handling for Shift+Backspace to directly remove list formatting
-          if (e.shiftKey && list) {
-            // Remove the list formatting but keep the content
+          // Special handling for aligned lists with flexbox layout
+          else if (range.startContainer === listItem.firstChild && range.startOffset === 0) {
+            // When list items have justifyContent (center/right alignment), 
+            // the cursor might be positioned differently
+            isAtStart = true;
+          }
+          
+          // Check if the list item is empty or contains only a non-breaking space
+          const isEmpty = !listItem.textContent || 
+                          listItem.textContent === '\u00A0' || 
+                          listItem.textContent === '\u200B' ||
+                          listItem.innerHTML === '<br>';
+          
+          // If we're at the start of a list item
+          if (isAtStart) {
+                      // Add special handling for Shift+Backspace to directly remove list formatting
+            if (e.shiftKey && list) {
+              // Remove the list formatting but keep the content
             
             // Create a document fragment to hold list items content
             const fragment = document.createDocumentFragment();
@@ -967,6 +991,8 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               // Apply alignment if the list had it
               if (listAlignment && listAlignment !== 'left' && listAlignment !== 'start') {
                 p.style.textAlign = listAlignment;
+                // Add the data attribute to ensure it's preserved
+                p.setAttribute('data-alignment-fixed', 'true');
               }
               
               fragment.appendChild(p);
@@ -975,11 +1001,13 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
             // Replace list with the fragment
             list.parentNode?.replaceChild(fragment, list);
             
-            // Set cursor to the first paragraph
+            // Set cursor to the first paragraph - improved positioning
             const firstP = fragment.firstChild as HTMLElement;
             if (firstP) {
               const newRange = document.createRange();
               if (firstP.firstChild && firstP.firstChild.nodeType === Node.TEXT_NODE) {
+                newRange.setStart(firstP.firstChild, 0);
+              } else if (firstP.firstChild) {
                 newRange.setStart(firstP.firstChild, 0);
               } else {
                 newRange.setStart(firstP, 0);
@@ -987,6 +1015,11 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               newRange.collapse(true);
               selection.removeAllRanges();
               selection.addRange(newRange);
+              
+              // Force focus on the editor
+              if (editorRef.current) {
+                editorRef.current.focus();
+              }
             }
             
             // Prevent default backspace behavior
@@ -1026,16 +1059,29 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               // Apply alignment if the list had it
               if (listAlignment && listAlignment !== 'left' && listAlignment !== 'start') {
                 p.style.textAlign = listAlignment;
+                // Add the data attribute to ensure it's preserved
+                p.setAttribute('data-alignment-fixed', 'true');
               }
               
               list.parentNode?.replaceChild(p, list);
               
-              // Set cursor to the paragraph
+              // Set cursor to the paragraph - improved for aligned paragraphs
               const newRange = document.createRange();
-              newRange.setStart(p, 0);
+              if (p.firstChild && p.firstChild.nodeType === Node.TEXT_NODE) {
+                newRange.setStart(p.firstChild, 0);
+              } else if (p.firstChild) {
+                newRange.setStart(p.firstChild, 0);
+              } else {
+                newRange.setStart(p, 0);
+              }
               newRange.collapse(true);
               selection.removeAllRanges();
               selection.addRange(newRange);
+              
+              // Force focus on the editor
+              if (editorRef.current) {
+                editorRef.current.focus();
+              }
               
               // Prevent default backspace behavior
               e.preventDefault();
@@ -1142,6 +1188,8 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
             // Apply alignment if the list had it
             if (listAlignment && listAlignment !== 'left' && listAlignment !== 'start') {
               p.style.textAlign = listAlignment;
+              // Add the data attribute to ensure it's preserved
+              p.setAttribute('data-alignment-fixed', 'true');
             }
             
             // If this was the only item in the list, replace the entire list
@@ -1153,16 +1201,25 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               listItem.remove();
             }
             
-            // Set cursor to the paragraph
+            // Set cursor to the paragraph - improved cursor positioning
             const newRange = document.createRange();
             if (p.firstChild && p.firstChild.nodeType === Node.TEXT_NODE) {
               newRange.setStart(p.firstChild, 0);
+            } else if (p.firstChild) {
+              // If first child is an element, place cursor at the beginning
+              newRange.setStart(p.firstChild, 0);
             } else {
+              // If no children, place cursor inside the paragraph
               newRange.setStart(p, 0);
             }
             newRange.collapse(true);
             selection.removeAllRanges();
             selection.addRange(newRange);
+            
+            // Force focus on the editor to ensure cursor is visible
+            if (editorRef.current) {
+              editorRef.current.focus();
+            }
             
             // Prevent default backspace behavior
             e.preventDefault();

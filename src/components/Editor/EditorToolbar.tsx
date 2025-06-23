@@ -959,16 +959,16 @@ const EditorToolbar = ({
       
       // Update format states
       updateFormatStates();
-    } else {
-      // Standard alignment for non-list elements
-      execFormatCommand(alignType);
-      
-      // Update the last known alignment ref based on the command
-      const newAlignment: TextAlignment = 
-        alignType === 'justifyLeft' ? 'left' :
-        alignType === 'justifyCenter' ? 'center' : 'right';
-      lastKnownAlignmentRef.current = newAlignment;
-    }
+          } else {
+        // Standard alignment for non-list elements
+        execFormatCommand(alignType);
+        
+        // Update the last known alignment ref based on the command
+        const newAlignment: TextAlignment = 
+          alignType === 'justifyLeft' ? 'left' :
+          alignType === 'justifyCenter' ? 'center' : 'right';
+        lastKnownAlignmentRef.current = newAlignment;
+      }
   };
 
   // Handle list formatting specifically
@@ -1023,6 +1023,7 @@ const EditorToolbar = ({
     
     // If already in a list of the same type, toggle it off (preserve indentation)
     if (currentList && currentList.tagName === listType) {
+      
       // Store cursor position before conversion
       const selectionRange = selection.getRangeAt(0);
       const cursorNode = selectionRange.startContainer;
@@ -1111,6 +1112,8 @@ const EditorToolbar = ({
         // Apply alignment if the list had it
         if (currentAlign && currentAlign !== 'left' && currentAlign !== 'start') {
           paragraph.style.textAlign = currentAlign;
+          // Add the data attribute to ensure it's preserved
+          paragraph.setAttribute('data-alignment-fixed', 'true');
         }
         
         fragment.appendChild(paragraph);
@@ -1125,38 +1128,75 @@ const EditorToolbar = ({
       // Replace the list with the paragraphs
       currentList.parentNode?.replaceChild(fragment, currentList);
       
-
-      
       // Update content FIRST
       if (editorRef.current) {
         const event = new Event('input', { bubbles: true });
         editorRef.current.dispatchEvent(event);
       }
       
-                    // THEN handle cursor positioning in a separate microtask to avoid interference
+      // THEN handle cursor positioning in a separate microtask to avoid interference
        setTimeout(() => {
           if (editorRef.current) {
-            // Find the first paragraph with the matching indentation
+            // Find the first paragraph with the matching indentation AND alignment
             const paragraphs = editorRef.current.querySelectorAll('p');
             let actualTargetParagraph: HTMLElement | null = null;
             
-            // Look for a paragraph with matching padding (indentation)
+            // Look for a paragraph with matching padding (indentation) AND alignment
             const targetPaddingLeft = itemsData[cursorListItemIndex]?.indentLevel || itemsData[cursorListItemIndex]?.paddingLeft || '';
+            const expectedAlignment = currentAlign || '';
             
             for (let i = 0; i < paragraphs.length; i++) {
               const p = paragraphs[i] as HTMLElement;
               const pPadding = p.style.paddingLeft || '';
+              const pAlignment = p.style.textAlign || '';
               
-              // Match by indentation and being empty (BR only)
-              if (pPadding === targetPaddingLeft && (p.innerHTML === '<br>' || p.textContent?.trim() === '')) {
+              // Match by indentation, alignment, and being empty (BR only)
+              const paddingMatches = pPadding === targetPaddingLeft;
+              const alignmentMatches = pAlignment === expectedAlignment;
+              const isEmpty = p.innerHTML === '<br>' || p.textContent?.trim() === '';
+              
+              if (paddingMatches && alignmentMatches && isEmpty) {
                 actualTargetParagraph = p;
                 break;
+              }
+            }
+            
+            // If no exact match found, look for just the indentation match (for backward compatibility)
+            if (!actualTargetParagraph) {
+              for (let i = 0; i < paragraphs.length; i++) {
+                const p = paragraphs[i] as HTMLElement;
+                const pPadding = p.style.paddingLeft || '';
+                
+                // Match by indentation and being empty (BR only)
+                if (pPadding === targetPaddingLeft && (p.innerHTML === '<br>' || p.textContent?.trim() === '')) {
+                  actualTargetParagraph = p;
+                  
+                  // Update the alignment to match what was expected
+                  if (expectedAlignment && expectedAlignment !== 'left' && expectedAlignment !== 'start') {
+                    p.style.textAlign = expectedAlignment;
+                    p.setAttribute('data-alignment-fixed', 'true');
+                  } else if (expectedAlignment === 'left' || expectedAlignment === '') {
+                    // Explicitly set left alignment and clear any old alignment
+                    p.style.textAlign = 'left';
+                    p.setAttribute('data-alignment-fixed', 'true');
+                  }
+                  break;
+                }
               }
             }
             
             // Fallback to first paragraph
             if (!actualTargetParagraph && paragraphs.length > 0) {
               actualTargetParagraph = paragraphs[0] as HTMLElement;
+              
+              // Make sure the fallback paragraph has the correct alignment
+              if (expectedAlignment && expectedAlignment !== 'left' && expectedAlignment !== 'start') {
+                actualTargetParagraph.style.textAlign = expectedAlignment;
+                actualTargetParagraph.setAttribute('data-alignment-fixed', 'true');
+              } else if (expectedAlignment === 'left' || expectedAlignment === '') {
+                actualTargetParagraph.style.textAlign = 'left';
+                actualTargetParagraph.setAttribute('data-alignment-fixed', 'true');
+              }
             }
             
             if (actualTargetParagraph) {
@@ -1172,6 +1212,9 @@ const EditorToolbar = ({
               
               // Focus the editor
               editorRef.current.focus();
+              
+              // Force an immediate format state update
+              updateFormatStates();
             }
           }
         }, 0);
