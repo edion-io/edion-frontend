@@ -66,6 +66,197 @@ interface AlignmentContext {
   alignedParentNode: HTMLElement | null;
 }
 
+// Selection preservation types and utilities
+interface TextSelectionState {
+  hasSelection: boolean;
+  selectedText: string;
+  startText: string;
+  endText: string;
+  startOffset: number;
+  endOffset: number;
+  contextBefore: string;
+  contextAfter: string;
+}
+
+// Capture the current text selection with context for restoration
+const captureTextSelection = (editorElement: HTMLElement): TextSelectionState => {
+  const selection = window.getSelection();
+  
+  if (!selection || !selection.rangeCount || selection.isCollapsed) {
+    return {
+      hasSelection: false,
+      selectedText: '',
+      startText: '',
+      endText: '',
+      startOffset: 0,
+      endOffset: 0,
+      contextBefore: '',
+      contextAfter: ''
+    };
+  }
+  
+  const range = selection.getRangeAt(0);
+  const selectedText = range.toString();
+  
+
+  
+  // Get the full text content of the editor
+  const fullText = editorElement.textContent || '';
+  
+  // Find the position of selected text in the full text
+  const beforeRange = document.createRange();
+  beforeRange.setStart(editorElement, 0);
+  beforeRange.setEnd(range.startContainer, range.startOffset);
+  const textBefore = beforeRange.toString();
+  
+  const afterRange = document.createRange();
+  afterRange.setStart(range.endContainer, range.endOffset);
+  afterRange.setEnd(editorElement, editorElement.childNodes.length);
+  const textAfter = afterRange.toString();
+  
+  // Get some context around the selection for better matching
+  const contextLength = 20;
+  const contextBefore = textBefore.slice(-contextLength);
+  const contextAfter = textAfter.slice(0, contextLength);
+  
+  return {
+    hasSelection: true,
+    selectedText,
+    startText: textBefore,
+    endText: textAfter,
+    startOffset: textBefore.length,
+    endOffset: textBefore.length + selectedText.length,
+    contextBefore,
+    contextAfter
+  };
+};
+
+// Restore text selection after DOM changes
+const restoreTextSelection = (editorElement: HTMLElement, selectionState: TextSelectionState): void => {
+  if (!selectionState.hasSelection || !selectionState.selectedText) {
+    return;
+  }
+  
+  // Get the current full text after DOM changes
+  const currentFullText = editorElement.textContent || '';
+  
+  // Try to find the selected text in the new structure
+  // First, try exact position match
+  let startPos = selectionState.startOffset;
+  let endPos = selectionState.endOffset;
+  
+  // If the text at the expected position doesn't match, search for it
+  if (currentFullText.slice(startPos, endPos) !== selectionState.selectedText) {
+    // Search for the selected text using context
+    const searchText = selectionState.contextBefore + selectionState.selectedText + selectionState.contextAfter;
+    const foundIndex = currentFullText.indexOf(searchText);
+    
+    if (foundIndex !== -1) {
+      startPos = foundIndex + selectionState.contextBefore.length;
+      endPos = startPos + selectionState.selectedText.length;
+    } else {
+      // Fallback: search for just the selected text
+      const directIndex = currentFullText.indexOf(selectionState.selectedText);
+      if (directIndex !== -1) {
+        startPos = directIndex;
+        endPos = startPos + selectionState.selectedText.length;
+      } else {
+        // If we still can't find exact text, try finding the closest match
+        // This can happen when list markers are added/removed
+        const words = selectionState.selectedText.split(/\s+/).filter(w => w.length > 0);
+        if (words.length > 0) {
+          // Try to find the first few words
+          const partialText = words.slice(0, Math.min(3, words.length)).join(' ');
+          const partialIndex = currentFullText.indexOf(partialText);
+          if (partialIndex !== -1) {
+            startPos = partialIndex;
+            endPos = Math.min(startPos + selectionState.selectedText.length, currentFullText.length);
+          } else {
+            // Cannot find the text, give up
+            return;
+          }
+        } else {
+          return;
+        }
+      }
+    }
+  }
+  
+  // Create a tree walker to find text nodes
+  const walker = document.createTreeWalker(
+    editorElement,
+    NodeFilter.SHOW_TEXT,
+    null
+  );
+  
+  let currentPos = 0;
+  let startNode: Node | null = null;
+  let endNode: Node | null = null;
+  let startNodeOffset = 0;
+  let endNodeOffset = 0;
+  
+  // Walk through text nodes to find start and end positions
+  let node: Node | null;
+  while (node = walker.nextNode()) {
+    const nodeLength = node.textContent?.length || 0;
+    
+    // Check if start position is in this node
+    if (startNode === null && currentPos + nodeLength >= startPos) {
+      startNode = node;
+      startNodeOffset = Math.max(0, startPos - currentPos);
+    }
+    
+    // Check if end position is in this node
+    if (endNode === null && currentPos + nodeLength >= endPos) {
+      endNode = node;
+      endNodeOffset = Math.min(nodeLength, endPos - currentPos);
+      break;
+    }
+    
+    currentPos += nodeLength;
+  }
+  
+  // Create and apply the selection
+  if (startNode && endNode) {
+    try {
+      const range = document.createRange();
+      range.setStart(startNode, startNodeOffset);
+      range.setEnd(endNode, endNodeOffset);
+      
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+      }
+    } catch (e) {
+      // If range creation fails, try a simpler approach
+      console.warn('Failed to restore selection:', e);
+    }
+  }
+};
+
+// Wrapper function to preserve selection during list operations
+const preserveSelectionDuringListOperation = (
+  editorElement: HTMLElement,
+  operation: () => void
+): void => {
+  // Capture current selection
+  const selectionState = captureTextSelection(editorElement);
+  
+  // Perform the operation
+  operation();
+  
+  // Restore selection after a brief delay to allow DOM to settle
+  // Use requestAnimationFrame to ensure DOM changes are complete
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+
+      restoreTextSelection(editorElement, selectionState);
+    }, 5);
+  });
+};
+
 // Helper function to normalize color to hex
 const normalizeColorToHex = (colorValue: string): string => {
   if (!colorValue) return '#000000';
@@ -1284,50 +1475,11 @@ const EditorToolbar = ({
       editorRef.current.dispatchEvent(event);
     }
     
-    // Handle cursor positioning
-    setTimeout(() => {
-      if (editorRef.current && context.cursorListItemIndex >= 0) {
-        const paragraphs = editorRef.current.querySelectorAll('p');
-        let targetParagraph: HTMLElement | null = null;
-        
-        const targetPaddingLeft = itemData[context.cursorListItemIndex]?.indentLevel || 
-                                  itemData[context.cursorListItemIndex]?.paddingLeft || '';
-        const expectedAlignment = currentAlign || '';
-        
-        // Find matching paragraph by indentation and alignment
-        for (let i = 0; i < paragraphs.length; i++) {
-          const p = paragraphs[i] as HTMLElement;
-          const pPadding = p.style.paddingLeft || '';
-          const pAlignment = p.style.textAlign || '';
-          const isEmpty = p.innerHTML === '<br>' || p.textContent?.trim() === '';
-          
-          if (pPadding === targetPaddingLeft && pAlignment === expectedAlignment && isEmpty) {
-            targetParagraph = p;
-            break;
-          }
-        }
-        
-        // Fallback to first paragraph
-        if (!targetParagraph && paragraphs.length > 0) {
-          targetParagraph = paragraphs[0] as HTMLElement;
-          if (expectedAlignment && expectedAlignment !== 'left' && expectedAlignment !== 'start') {
-            targetParagraph.style.textAlign = expectedAlignment;
-            targetParagraph.setAttribute('data-alignment-fixed', 'true');
-          }
-        }
-        
-        if (targetParagraph) {
-          const range = document.createRange();
-          const selection = window.getSelection();
-          range.setStart(targetParagraph, 0);
-          range.collapse(true);
-          selection?.removeAllRanges();
-          selection?.addRange(range);
-          editorRef.current.focus();
-          updateFormatStates();
-        }
-      }
-    }, 0);
+    // Update content
+    if (editorRef.current) {
+      const event = new Event('input', { bubbles: true });
+      editorRef.current.dispatchEvent(event);
+    }
   };
 
   // Helper function to convert between list types
@@ -1397,12 +1549,18 @@ const EditorToolbar = ({
             });
           });
         });
+        
+        // Update content
+        if (editorRef.current) {
+          const event = new Event('input', { bubbles: true });
+          editorRef.current.dispatchEvent(event);
+        }
       }
     });
   };
 
   // Helper function to create new list from text
-  const createNewListFromText = (listType: 'UL' | 'OL', alignmentContext: AlignmentContext) => {
+  const createNewListFromText = (listType: 'UL' | 'OL', alignmentContext: AlignmentContext, skipNewListCallback: boolean = false) => {
     if (!editorRef.current) return;
     
     const selection = window.getSelection();
@@ -1485,32 +1643,15 @@ const EditorToolbar = ({
         applyListAlignment(newListElement, alignmentContext.currentAlignment, listType);
       }
       
-      // Fix cursor positioning
-      setTimeout(() => {
-        const walker = document.createTreeWalker(firstItem, NodeFilter.SHOW_TEXT, null);
-        let textNode = walker.nextNode();
-        
-        if (!textNode) {
-          textNode = document.createTextNode('\u00A0');
-          if (firstItem.innerHTML === '<br>') {
-            firstItem.innerHTML = '';
-          }
-          firstItem.appendChild(textNode);
-        }
-        
-        if (textNode) {
-          const range = document.createRange();
-          range.setStart(textNode, 0);
-          range.collapse(true);
-          newSelection.removeAllRanges();
-          newSelection.addRange(range);
-          firstItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        }
-      }, 10);
-      
-      // Trigger callback for ordered lists
-      if (listType === 'OL') {
+      // Trigger callback for ordered lists (unless we're preserving selection)
+      if (listType === 'OL' && !skipNewListCallback) {
         onNewListCreated?.();
+      }
+      
+      // Update content
+      if (editorRef.current) {
+        const event = new Event('input', { bubbles: true });
+        editorRef.current.dispatchEvent(event);
       }
     }
   };
@@ -1519,26 +1660,29 @@ const EditorToolbar = ({
   const handleListFormatting = (listType: 'UL' | 'OL') => {
     if (!editorRef.current) return;
 
-    const context = detectListContext();
-    if (!context.selection) return;
+    // Use selection preservation wrapper for all list operations
+    preserveSelectionDuringListOperation(editorRef.current, () => {
+      const context = detectListContext();
+      if (!context.selection) return;
 
-    // If already in a list of the same type, toggle it off
-    if (context.currentList && context.listType === listType) {
-      const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
-      toggleListOff(context, itemData);
-      return;
-    }
+      // If already in a list of the same type, toggle it off
+      if (context.currentList && context.listType === listType) {
+        const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
+        toggleListOff(context, itemData);
+        return;
+      }
 
-    // If in a different list type, convert between types
-    if (context.currentList && context.listType && context.listType !== listType) {
-      const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
-      convertBetweenListTypes(context.listType, listType, context, itemData);
-      return;
-    }
+      // If in a different list type, convert between types
+      if (context.currentList && context.listType && context.listType !== listType) {
+        const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
+        convertBetweenListTypes(context.listType, listType, context, itemData);
+        return;
+      }
 
-    // Not in a list, create a new one
-    const alignmentContext = detectAlignmentContext();
-    createNewListFromText(listType, alignmentContext);
+      // Not in a list, create a new one
+      const alignmentContext = detectAlignmentContext();
+      createNewListFromText(listType, alignmentContext, true); // Skip callback to preserve selection
+    });
 
     // Update format states and trigger content change event
     updateFormatStates();
