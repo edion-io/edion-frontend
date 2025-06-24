@@ -36,6 +36,36 @@ interface EditorToolbarProps {
 
 type TextAlignment = 'left' | 'center' | 'right';
 
+// Types for list formatting helpers
+interface ListContext {
+  currentList: HTMLElement | null;
+  listItem: HTMLElement | null;
+  listType: 'UL' | 'OL' | null;
+  selection: Selection | null;
+  cursorNode: Node | null;
+  cursorOffset: number;
+  cursorListItemIndex: number;
+  cursorPosition: 'beginning' | 'middle' | 'end';
+}
+
+interface ListItemData {
+  html: string;
+  textContent: string;
+  indentLevel: string;
+  paddingLeft: string;
+  markerBold?: boolean;
+  markerItalic?: boolean;
+  markerUnderline?: boolean;
+  justifyContent?: string;
+  markerOffset?: string;
+  fullStyle?: string | null;
+}
+
+interface AlignmentContext {
+  currentAlignment: string;
+  alignedParentNode: HTMLElement | null;
+}
+
 // Helper function to normalize color to hex
 const normalizeColorToHex = (colorValue: string): string => {
   if (!colorValue) return '#000000';
@@ -941,9 +971,10 @@ const EditorToolbar = ({
         });
         
         // Force a redraw to make the change take effect immediately
+        const originalDisplay = listElement.style.display;
         listElement.style.display = 'none';
         listElement.offsetHeight; // Force reflow
-        listElement.style.display = '';
+        listElement.style.display = originalDisplay;
       }
       
       // Update content
@@ -959,26 +990,47 @@ const EditorToolbar = ({
       
       // Update format states
       updateFormatStates();
-          } else {
-        // Standard alignment for non-list elements
-        execFormatCommand(alignType);
-        
-        // Update the last known alignment ref based on the command
-        const newAlignment: TextAlignment = 
-          alignType === 'justifyLeft' ? 'left' :
-          alignType === 'justifyCenter' ? 'center' : 'right';
-        lastKnownAlignmentRef.current = newAlignment;
-      }
+    } else {
+      // Standard alignment for non-list elements
+      execFormatCommand(alignType);
+      
+      // Update the last known alignment ref based on the command
+      const newAlignment: TextAlignment = 
+        alignType === 'justifyLeft' ? 'left' :
+        alignType === 'justifyCenter' ? 'center' : 'right';
+      lastKnownAlignmentRef.current = newAlignment;
+    }
   };
 
-  // Handle list formatting specifically
-  const handleListFormatting = (listType: 'UL' | 'OL') => {
-    if (!editorRef.current) return;
+  // Helper function to detect current list context
+  const detectListContext = (): ListContext => {
+    if (!editorRef.current) {
+      return {
+        currentList: null,
+        listItem: null,
+        listType: null,
+        selection: null,
+        cursorNode: null,
+        cursorOffset: 0,
+        cursorListItemIndex: -1,
+        cursorPosition: 'middle'
+      };
+    }
 
     const selection = window.getSelection();
-    if (!selection || !selection.rangeCount) return;
-    
-    // Find if we're already in a list
+    if (!selection || !selection.rangeCount) {
+      return {
+        currentList: null,
+        listItem: null,
+        listType: null,
+        selection: null,
+        cursorNode: null,
+        cursorOffset: 0,
+        cursorListItemIndex: -1,
+        cursorPosition: 'middle'
+      };
+    }
+
     let currentList = null;
     let listItem = null;
     let node = selection.anchorNode;
@@ -997,60 +1049,19 @@ const EditorToolbar = ({
       }
       node = node.parentNode;
     }
+
+    // Calculate cursor information
+    const selectionRange = selection.getRangeAt(0);
+    const cursorNode = selectionRange.startContainer;
+    const cursorOffset = selectionRange.startOffset;
     
-    // Check for existing alignment before creating list
-    let currentAlignment = 'left';
-    let alignedParentNode = null;
+    let cursorListItemIndex = -1;
+    let cursorPosition: 'beginning' | 'middle' | 'end' = 'middle';
     
-    if (!currentList) {
-      // If not in a list, check for text alignment in the closest parent block element
-      node = selection.anchorNode;
-      while (node && node !== editorRef.current) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          const element = node as HTMLElement;
-          const computedStyle = window.getComputedStyle(element);
-          const textAlign = computedStyle.textAlign;
-          
-          if (textAlign === 'center' || textAlign === 'right') {
-            currentAlignment = textAlign;
-            alignedParentNode = element;
-            break;
-          }
-        }
-        node = node.parentNode;
-      }
-    }
-    
-    // If already in a list of the same type, toggle it off (preserve indentation)
-    if (currentList && currentList.tagName === listType) {
+    if (currentList && listItem) {
+      const allItems = Array.from(currentList.querySelectorAll('li'));
+      cursorListItemIndex = allItems.indexOf(listItem);
       
-      // Store cursor position before conversion
-      const selectionRange = selection.getRangeAt(0);
-      const cursorNode = selectionRange.startContainer;
-      const cursorOffset = selectionRange.startOffset;
-      
-      // Find which list item contains the cursor and its index
-      let cursorListItem: HTMLElement | null = null;
-      let cursorListItemIndex = -1;
-      
-      if (cursorNode) {
-        let node = cursorNode;
-        while (node && node !== currentList) {
-          if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === 'LI') {
-            cursorListItem = node as HTMLElement;
-            break;
-          }
-          node = node.parentNode;
-        }
-        
-        if (cursorListItem) {
-          const allItems = Array.from(currentList.querySelectorAll('li'));
-          cursorListItemIndex = allItems.indexOf(cursorListItem);
-        }
-      }
-      
-      // Store whether cursor is at beginning, middle, or end of text node
-      let cursorPosition: 'beginning' | 'middle' | 'end' = 'middle';
       if (cursorNode.nodeType === Node.TEXT_NODE) {
         if (cursorOffset === 0) {
           cursorPosition = 'beginning';
@@ -1058,1041 +1069,477 @@ const EditorToolbar = ({
           cursorPosition = 'end';
         }
       }
-      
-      // Store the list items' content and indentation
-      const listItems = Array.from(currentList.querySelectorAll('li')).map(item => item as HTMLLIElement);
-      const itemsData = listItems.map(item => {
-        return {
-          html: item.innerHTML,
-          textContent: item.textContent,
-          indentLevel: item.style.getPropertyValue('--indent-level'),
-          paddingLeft: item.style.paddingLeft
-        };
-      });
-      
-      // Get alignment of the current list
-      const currentAlign = currentList.style.textAlign || '';
-      
-      // Store current selection details
-      const currentRange = selection.getRangeAt(0);
-      const currentOffset = currentRange.startOffset;
-      const currentContainer = currentRange.startContainer;
-      
-      // Manual conversion instead of execCommand to preserve cursor position
-      const fragment = document.createDocumentFragment();
-      
-      // Convert each list item to a paragraph
-      listItems.forEach((listItem, index) => {
-        const paragraph = document.createElement('p');
+    }
+
+    return {
+      currentList,
+      listItem,
+      listType: currentList?.tagName as 'UL' | 'OL' | null,
+      selection,
+      cursorNode,
+      cursorOffset,
+      cursorListItemIndex,
+      cursorPosition
+    };
+  };
+
+  // Helper function to preserve list item data
+  const preserveListItemData = (listItems: HTMLElement[]): ListItemData[] => {
+    return listItems.map(item => ({
+      html: item.innerHTML,
+      textContent: item.textContent || '',
+      indentLevel: item.style.getPropertyValue('--indent-level'),
+      paddingLeft: item.style.paddingLeft,
+      markerBold: item.classList.contains('marker-bold'),
+      markerItalic: item.classList.contains('marker-italic'),
+      markerUnderline: item.classList.contains('marker-underline'),
+      justifyContent: item.style.justifyContent,
+      markerOffset: item.style.getPropertyValue('--marker-offset'),
+      fullStyle: item.getAttribute('style')
+    }));
+  };
+
+  // Helper function to detect alignment context
+  const detectAlignmentContext = (): AlignmentContext => {
+    let currentAlignment = 'left';
+    let alignedParentNode = null;
+    
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) {
+      return { currentAlignment, alignedParentNode };
+    }
+
+    const range = selection.getRangeAt(0);
+    let node = range.startContainer;
+    
+    while (node && node !== editorRef.current) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = node as HTMLElement;
+        const computedStyle = window.getComputedStyle(element);
+        const textAlign = computedStyle.textAlign;
         
-        // Preserve the list item's content - improved content handling
-        const originalContent = listItem.innerHTML;
-        const originalTextContent = listItem.textContent || '';
-        
-        // Handle empty or minimal content - use BR for empty paragraphs as it's more stable
-        if (!originalContent || originalContent.trim() === '' || originalContent === '<br>' || originalContent === '&nbsp;') {
-          // For empty content, use BR tag which is stable in contentEditable
-          paragraph.innerHTML = '<br>';
-        } else {
-          paragraph.innerHTML = originalContent;
+        if (textAlign === 'center' || textAlign === 'right') {
+          currentAlignment = textAlign;
+          alignedParentNode = element;
+          break;
         }
-        
-        // Apply indentation from list item - improved logic
-        const data = itemsData[index];
-        
-        // First try to use --indent-level (preferred method)
-        if (data.indentLevel && data.indentLevel.trim() !== '' && data.indentLevel !== '0px' && data.indentLevel !== '0') {
-          paragraph.style.paddingLeft = data.indentLevel;
-        } 
-        // Fallback to direct paddingLeft
-        else if (data.paddingLeft && data.paddingLeft.trim() !== '' && data.paddingLeft !== '0px' && data.paddingLeft !== '0') {
-          paragraph.style.paddingLeft = data.paddingLeft;
-        }
-        
-        // Apply alignment if the list had it
-        if (currentAlign && currentAlign !== 'left' && currentAlign !== 'start') {
-          paragraph.style.textAlign = currentAlign;
-          // Add the data attribute to ensure it's preserved
-          paragraph.setAttribute('data-alignment-fixed', 'true');
-        }
-        
-        fragment.appendChild(paragraph);
-      });
-      
-      // Find which paragraph should contain the cursor
-      let targetParagraph = fragment.children[cursorListItemIndex] as HTMLElement;
-      if (!targetParagraph && fragment.children.length > 0) {
-        targetParagraph = fragment.children[0] as HTMLElement;
       }
-      
-      // Replace the list with the paragraphs
-      currentList.parentNode?.replaceChild(fragment, currentList);
-      
-      // Update content FIRST
-      if (editorRef.current) {
-        const event = new Event('input', { bubbles: true });
-        editorRef.current.dispatchEvent(event);
-      }
-      
-      // THEN handle cursor positioning in a separate microtask to avoid interference
-       setTimeout(() => {
-          if (editorRef.current) {
-            // Find the first paragraph with the matching indentation AND alignment
-            const paragraphs = editorRef.current.querySelectorAll('p');
-            let actualTargetParagraph: HTMLElement | null = null;
-            
-            // Look for a paragraph with matching padding (indentation) AND alignment
-            const targetPaddingLeft = itemsData[cursorListItemIndex]?.indentLevel || itemsData[cursorListItemIndex]?.paddingLeft || '';
-            const expectedAlignment = currentAlign || '';
-            
-            for (let i = 0; i < paragraphs.length; i++) {
-              const p = paragraphs[i] as HTMLElement;
-              const pPadding = p.style.paddingLeft || '';
-              const pAlignment = p.style.textAlign || '';
-              
-              // Match by indentation, alignment, and being empty (BR only)
-              const paddingMatches = pPadding === targetPaddingLeft;
-              const alignmentMatches = pAlignment === expectedAlignment;
-              const isEmpty = p.innerHTML === '<br>' || p.textContent?.trim() === '';
-              
-              if (paddingMatches && alignmentMatches && isEmpty) {
-                actualTargetParagraph = p;
-                break;
-              }
-            }
-            
-            // If no exact match found, look for just the indentation match (for backward compatibility)
-            if (!actualTargetParagraph) {
-              for (let i = 0; i < paragraphs.length; i++) {
-                const p = paragraphs[i] as HTMLElement;
-                const pPadding = p.style.paddingLeft || '';
-                
-                // Match by indentation and being empty (BR only)
-                if (pPadding === targetPaddingLeft && (p.innerHTML === '<br>' || p.textContent?.trim() === '')) {
-                  actualTargetParagraph = p;
-                  
-                  // Update the alignment to match what was expected
-                  if (expectedAlignment && expectedAlignment !== 'left' && expectedAlignment !== 'start') {
-                    p.style.textAlign = expectedAlignment;
-                    p.setAttribute('data-alignment-fixed', 'true');
-                  } else if (expectedAlignment === 'left' || expectedAlignment === '') {
-                    // Explicitly set left alignment and clear any old alignment
-                    p.style.textAlign = 'left';
-                    p.setAttribute('data-alignment-fixed', 'true');
-                  }
-                  break;
-                }
-              }
-            }
-            
-            // Fallback to first paragraph
-            if (!actualTargetParagraph && paragraphs.length > 0) {
-              actualTargetParagraph = paragraphs[0] as HTMLElement;
-              
-              // Make sure the fallback paragraph has the correct alignment
-              if (expectedAlignment && expectedAlignment !== 'left' && expectedAlignment !== 'start') {
-                actualTargetParagraph.style.textAlign = expectedAlignment;
-                actualTargetParagraph.setAttribute('data-alignment-fixed', 'true');
-              } else if (expectedAlignment === 'left' || expectedAlignment === '') {
-                actualTargetParagraph.style.textAlign = 'left';
-                actualTargetParagraph.setAttribute('data-alignment-fixed', 'true');
-              }
-            }
-            
-            if (actualTargetParagraph) {
-              // Set cursor to the paragraph - simple and reliable
-              const range = document.createRange();
-              const selection = window.getSelection();
-              
-              // For BR-only paragraphs, position cursor at the beginning of the paragraph
-              range.setStart(actualTargetParagraph, 0);
-              range.collapse(true);
-              selection?.removeAllRanges();
-              selection?.addRange(range);
-              
-              // Focus the editor
-              editorRef.current.focus();
-              
-              // Force an immediate format state update
-              updateFormatStates();
-            }
-          }
-        }, 0);
-      
-      return;
+      node = node.parentNode;
     }
     
-    // If already in a list, but not of the desired type, convert between UL and OL
-    if (currentList && currentList.tagName !== listType) {
-      const currentListType = currentList.tagName;
-      const alignmentToTransfer = currentList.style.textAlign;
+    return { currentAlignment, alignedParentNode };
+  };
 
-
-
-      // Check if we're trying to convert between list types
-      if (currentListType === 'UL' && listType === 'OL' || currentListType === 'OL' && listType === 'UL') {
-        // Store cursor position before conversion
-        const selectionRange = selection.getRangeAt(0);
-        const cursorNode = selectionRange.startContainer;
-        const cursorOffset = selectionRange.startOffset;
-        
-        // Find which list item contains the cursor and its index
-        let cursorListItem: HTMLElement | null = null;
-        let cursorListItemIndex = -1;
-        
-        if (cursorNode) {
-          let node = cursorNode;
-          while (node && node !== currentList) {
-            if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === 'LI') {
-              cursorListItem = node as HTMLElement;
-              break;
-            }
-            node = node.parentNode;
+  // Helper function to apply alignment to lists
+  const applyListAlignment = (listElement: HTMLElement, alignment: string, listType: 'UL' | 'OL') => {
+    if (alignment !== 'left') {
+      listElement.style.textAlign = alignment;
+      
+      if (listType === 'OL') {
+        const listItems = listElement.querySelectorAll('li');
+        listItems.forEach(item => {
+          (item as HTMLElement).style.removeProperty('justify-content');
+          if (alignment === 'center') {
+            (item as HTMLElement).style.justifyContent = 'center';
+          } else if (alignment === 'right') {
+            (item as HTMLElement).style.justifyContent = 'flex-end';
           }
-          
-          if (cursorListItem) {
-            const allItems = Array.from(currentList.querySelectorAll('li'));
-            cursorListItemIndex = allItems.indexOf(cursorListItem);
-          }
-        }
-        
-        // Also store whether cursor is at beginning, middle, or end of text node
-        let cursorPosition: 'beginning' | 'middle' | 'end' = 'middle';
-        if (cursorNode.nodeType === Node.TEXT_NODE) {
-          if (cursorOffset === 0) {
-            cursorPosition = 'beginning';
-          } else if (cursorOffset === cursorNode.textContent?.length) {
-            cursorPosition = 'end';
-          }
-        }
-        
-        // Store original list item content for potential restoration
-        const listItems = currentList ? Array.from(currentList.querySelectorAll('li')).map(item => item as HTMLLIElement) : [];
-        const originalContent = listItems.map((item, index) => {
-          const itemData = {
-            html: item.innerHTML,
-            textContent: item.textContent || '',
-            paddingLeft: item.style.paddingLeft,
-            markerOffset: item.style.getPropertyValue('--marker-offset'),
-            indentLevel: item.style.getPropertyValue('--indent-level'),
-            fullStyle: item.getAttribute('style')
-          };
-
-          return itemData;
         });
-
-        // If list has alignment, we need to preserve it
-        if (alignmentToTransfer && alignmentToTransfer !== 'left' && alignmentToTransfer !== 'start') {
-          // Disable transitions during conversion to prevent visual movement
-          const originalEditorTransition = editorRef.current?.style.transition;
-          if (editorRef.current) {
-            editorRef.current.style.transition = 'none';
+      }
+      
+      if (listType === 'UL' && alignment !== 'left') {
+        const listItems = listElement.querySelectorAll('li');
+        listItems.forEach(item => {
+          (item as HTMLElement).style.listStylePosition = 'inside';
+          (item as HTMLElement).style.removeProperty('justify-content');
+          if (alignment === 'center') {
+            (item as HTMLElement).style.justifyContent = 'center';
+          } else if (alignment === 'right') {
+            (item as HTMLElement).style.justifyContent = 'flex-end';
           }
-          
-          // First remove the current list type, then add the new list type
-          document.execCommand(currentListType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-          document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+        });
+      }
+      
+      lastKnownAlignmentRef.current = alignment as TextAlignment;
+      setTextAlignment(alignment as TextAlignment);
+    }
+  };
 
-          // Find the newly created list and apply alignment
-          const sel = window.getSelection();
-          let list: HTMLElement | null = null;
+  // Helper function to restore indentation to list items
+  const restoreIndentationToItems = (items: HTMLElement[], itemData: ListItemData[]) => {
+    items.forEach((item, index) => {
+      if (index < itemData.length) {
+        const originalData = itemData[index];
+        item.innerHTML = originalData.html;
+        
+        let indentLevelSuccessfullySet = false;
 
-          if (sel?.anchorNode) {
-            let n: Node | null = sel.anchorNode;
-            while (n && n !== editorRef.current) {
-              if (
-                n.nodeType === Node.ELEMENT_NODE &&
-                ((n as HTMLElement).tagName === 'UL' || (n as HTMLElement).tagName === 'OL')
-              ) {
-                list = n as HTMLElement;
-                break;
-              }
-              n = n.parentNode;
-            }
+        // Try to use originalData.indentLevel
+        if (originalData.indentLevel && originalData.indentLevel !== '') {
+          const parsedOriginalIndent = parseInt(originalData.indentLevel, 10);
+          if (!isNaN(parsedOriginalIndent) && parsedOriginalIndent >= 0) {
+            item.style.setProperty('--indent-level', parsedOriginalIndent.toString());
+            indentLevelSuccessfullySet = true;
           }
+        }
 
+        // Fallback to paddingLeft
+        if (!indentLevelSuccessfullySet && originalData.paddingLeft) {
+          item.style.paddingLeft = originalData.paddingLeft;
+        }
 
+        // Ensure --indent-level is set
+        if (!indentLevelSuccessfullySet) {
+          item.style.setProperty('--indent-level', '0');
+        }
+      }
+    });
+  };
 
-          if (list) {
-            // Disable transitions on the list itself
-            const originalListTransition = list.style.transition;
-            list.style.transition = 'none';
-            
-            list.style.textAlign = alignmentToTransfer;
-
-            // Get all list items and disable their transitions
-            const allListItems = Array.from(list.querySelectorAll('li'));
-            const originalItemTransitions: string[] = [];
-            allListItems.forEach((item, index) => {
-              const listItem = item as HTMLElement;
-              originalItemTransitions[index] = listItem.style.transition;
-              listItem.style.transition = 'none';
-            });
-
-            list.querySelectorAll('li').forEach(liNode => {
-              const li = liNode as HTMLElement;
-
-              if (list.tagName === 'UL') {
-                li.style.listStylePosition = 'inside';
-              }
-              li.style.removeProperty('justify-content');
-
-              if (alignmentToTransfer === 'center') {
-                li.style.justifyContent = 'center';
-              } else if (alignmentToTransfer === 'right') {
-                li.style.justifyContent = 'flex-end';
-              }
-
-            });
-            
-            // MISSING PIECE: Restore indentation from original list items
-            const newItems = Array.from(list.querySelectorAll('li'));
-            newItems.forEach((item, index) => {
-              if (index < originalContent.length) {
-                const listItem = item as HTMLElement;
-                const originalData = originalContent[index];
-                
-
-                
-                // Restore indentation - prioritize --indent-level over paddingLeft
-                if (originalData.indentLevel && originalData.indentLevel !== '' && originalData.indentLevel !== '0px') {
-                  listItem.style.setProperty('--indent-level', originalData.indentLevel);
-                  listItem.style.removeProperty('padding-left');
-
-                } else if (originalData.paddingLeft && originalData.paddingLeft !== '' && originalData.paddingLeft !== '0px') {
-                  listItem.style.paddingLeft = originalData.paddingLeft;
-                  listItem.style.removeProperty('--indent-level');
-                  
-                } else {
-                  // No indentation to restore
-                  listItem.style.removeProperty('--indent-level');
-                  listItem.style.removeProperty('padding-left');
-                  
-                }
-              }
-            });
-            
-            // Force reflows to ensure styles are applied before re-enabling transitions
-            list.offsetHeight;
-            list.offsetWidth;
-            
-            // Re-enable transitions after everything is positioned correctly
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                // Restore editor transition
-                if (editorRef.current) {
-                  editorRef.current.style.transition = originalEditorTransition || '';
-                }
-                
-                // Restore list transition
-                list.style.transition = originalListTransition || '';
-                
-                // Restore item transitions
-                allListItems.forEach((item, index) => {
-                  const listItem = item as HTMLElement;
-                  listItem.style.transition = originalItemTransitions[index] || '';
-                });
-              });
-            });
-          }
-          
-          // Find all paragraphs that were created from the list items
-          const range = selection.getRangeAt(0);
-          const commonAncestor = range.commonAncestorContainer;
-          let paragraphs: HTMLElement[] = [];
-          
-          if (commonAncestor.nodeType === Node.ELEMENT_NODE) {
-            // Walk up a few levels to find paragraphs or divs that were created
-            let container = commonAncestor as HTMLElement;
-            if (container.tagName !== 'DIV' && container.tagName !== 'P') {
-              container = container.parentElement || editorRef.current;
-            }
-            
-            // Find all paragraphs that might have been created
-            paragraphs = Array.from(container.querySelectorAll('p'));
-          }
-          
-
-          // Apply the alignment to all created paragraphs
-          paragraphs.forEach((p) => {
-            p.style.textAlign = alignmentToTransfer;
-            p.setAttribute('data-alignment-fixed', 'true');
-
-          });
-          
-          // Update the last known alignment
-          lastKnownAlignmentRef.current = alignmentToTransfer as TextAlignment;
-          setTextAlignment(alignmentToTransfer as TextAlignment);
-          
-          // Special case for single paragraph - make sure it gets the alignment
-          if (paragraphs.length === 0) {
-            // If we can't find paragraphs, try a different approach - look at the selection
-            const selNode = selection.anchorNode;
-            if (selNode) {
-              let paragraphNode = selNode;
-              if (selNode.nodeType === Node.TEXT_NODE) {
-                paragraphNode = selNode.parentNode;
-              }
-              
-              // Apply alignment to the closest paragraph or div
-              while (paragraphNode && paragraphNode !== editorRef.current) {
-                if (paragraphNode.nodeType === Node.ELEMENT_NODE) {
-                  const element = paragraphNode as HTMLElement;
-                  if (element.tagName === 'P' || element.tagName === 'DIV') {
-                    element.style.textAlign = alignmentToTransfer;
-                    element.setAttribute('data-alignment-fixed', 'true');
-                    break;
-                  }
-                }
-                paragraphNode = paragraphNode.parentNode;
-              }
-            }
-          }
-          
-          // Update content to ensure changes are saved
-          if (editorRef.current) {
-            const event = new Event('input', { bubbles: true });
-            editorRef.current.dispatchEvent(event);
-          }
-        } else {
-          // Temporarily disable transitions on the entire editor during list conversion
-          const originalEditorTransition = editorRef.current?.style.transition;
-          if (editorRef.current) {
-            editorRef.current.style.transition = 'none';
-          }
-          
-          // Standard conversion for left-aligned lists, but preserve indentation
-          // First remove the current list type, then add the new list type
-          document.execCommand(currentListType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-          document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-          
-          // Immediately find and fix the new list (no setTimeout)
-          const selection = window.getSelection();
-          let newList = null;
-          
-          if (selection && selection.anchorNode) {
-            let node = selection.anchorNode;
-            while (node && node !== editorRef.current) {
-              if (node.nodeType === Node.ELEMENT_NODE && 
-                  ((node as HTMLElement).tagName === 'UL' || (node as HTMLElement).tagName === 'OL')) {
-                newList = node as HTMLElement;
-                break;
-              }
-              node = node.parentNode;
-            }
-          }
-          
-
-          if (newList) {
-            // Also disable transitions on the list itself
-            const originalListTransition = newList.style.transition;
-            newList.style.transition = 'none';
-            
-            const newItems = Array.from(newList.querySelectorAll('li'));
-            
-            // Disable transitions on all list items
-            const originalTransitions: string[] = [];
-            newItems.forEach((item, index) => {
-              const listItem = item as HTMLElement;
-              originalTransitions[index] = listItem.style.transition;
-              listItem.style.transition = 'none';
-            });
-            
-            // Restore indentation immediately
-            newItems.forEach((item, index) => {
-              if (index < originalContent.length) {
-                const listItem = item as HTMLElement;
-                const originalData = originalContent[index];
-                
-
-                
-                listItem.innerHTML = originalData.html;
-                let finalIndentLevel = 0; // Integer value of indent level
-                let indentLevelSuccessfullySet = false;
-
-                // 1. Try to use originalData.indentLevel
-                if (originalData.indentLevel && originalData.indentLevel !== '') {
-                    const parsedOriginalIndent = parseInt(originalData.indentLevel, 10);
-                    if (!isNaN(parsedOriginalIndent) && parsedOriginalIndent >= 0) {
-                        finalIndentLevel = parsedOriginalIndent;
-                        listItem.style.setProperty('--indent-level', finalIndentLevel.toString());
-                        indentLevelSuccessfullySet = true;
-
-                    }
-                }
-
-                // 2. If not set from originalData.indentLevel, try to derive from originalData.paddingLeft
-                if (!indentLevelSuccessfullySet && originalData.paddingLeft) {
-                    listItem.style.paddingLeft = originalData.paddingLeft;
-
-                    // listItem.style.removeProperty('--indent-level'); // This was removed in the bad edit, should stay if it was intentional for this logic path
-
-                    // The logic to derive finalIndentLevel from paddingLeft was here.
-                    // We need to ensure it is correctly restored if it was meant to be here.
-                    // For now, assuming the previous state correctly handled this if block or it was simplified.
-                    // The main goal is to remove logs. If paddingLeft implies indentLevel, that logic is separate.
-                    // For now, just removing the logs from the restored derivation logic.
-
-                }
-
-                // 3. Fallback if --indent-level is still not successfully set
-                if (!indentLevelSuccessfullySet) {
-                    listItem.style.setProperty('--indent-level', '0'); // finalIndentLevel remains 0 (its initial value)
-
-                }
-              }
-            });
-            
-            // Force multiple reflows to ensure styles are applied
-            newList.offsetHeight;
-            newList.offsetWidth;
-            
-            // Re-enable transitions after the browser has definitely rendered
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                // Restore editor transition
-                if (editorRef.current) {
-                  editorRef.current.style.transition = originalEditorTransition || '';
-                }
-                
-                // Restore list transition
-                newList.style.transition = originalListTransition || '';
-                
-                // Restore item transitions
-                newItems.forEach((item, index) => {
-                  const listItem = item as HTMLElement;
-                  listItem.style.transition = originalTransitions[index] || '';
-                });
-              });
-            });
-            
-            // Update content
-            if (editorRef.current) {
-              const event = new Event('input', { bubbles: true });
-              editorRef.current.dispatchEvent(event);
-            }
-          } else {
-            // If we couldn't find the list, still restore editor transition
-            setTimeout(() => {
-              if (editorRef.current) {
-                editorRef.current.style.transition = originalEditorTransition || '';
-              }
-            }, 100);
-          }
-          
-          // Fix cursor position for all list type conversions
-          setTimeout(() => {
-            // Find the newly created list
-            let newList = null;
-            
-            // Try multiple methods to find the new list
-            // Method 1: Starting from selection
-            if (selection.anchorNode) {
-              let node = selection.anchorNode;
-              
-              while (node && node !== editorRef.current) {
-                if (node.nodeType === 1 && (node as HTMLElement).tagName === listType) {
-                  newList = node;
-                  break;
-                }
-                node = node.parentNode;
-              }
-            }
-            
-            // Method 2: Direct query if method 1 fails
-            if (!newList) {
-              newList = editorRef.current?.querySelector(listType === 'UL' ? 'ul' : 'ol');
-            }
-            
-            if (newList) {
-              // Get all list items
-              const listItems = (newList as HTMLElement).querySelectorAll('li');
-              
-              // Check if we have original content to restore
-              if (originalContent && originalContent.length > 0) {
-                // Try to restore original content to the new list
-                Array.from(listItems).forEach((item, index) => {
-                  if (index < originalContent.length && originalContent[index].html) {
-                    // Only restore if current item appears empty or just has a spacer
-                    const isEmpty = !item.textContent || 
-                                   item.textContent === '\u200B' ||
-                                   item.innerHTML.includes('list-item-spacer');
-                    
-                    if (isEmpty) {
-                      item.innerHTML = originalContent[index].html;
-                    }
-                  }
-                });
-              }
-              
-              // Restore cursor to the same list item at approximately the same position
-              let targetItem = null;
-              
-              if (cursorListItemIndex >= 0 && cursorListItemIndex < listItems.length) {
-                // If we know which list item had the cursor, use that
-                targetItem = listItems[cursorListItemIndex];
-              } else if (selection.rangeCount > 0) {
-                // Otherwise try to find a list item that contains the selection
-                for (let i = 0; i < listItems.length; i++) {
-                  if (selection.containsNode(listItems[i], true)) {
-                    targetItem = listItems[i];
-                    break;
-                  }
-                }
-              }
-              
-              // If no item contains selection, use first item
-              if (!targetItem && listItems.length > 0) {
-                targetItem = listItems[0];
-              }
-              
-              if (targetItem) {
-                // Place cursor in the right position
-                const range = document.createRange();
-                
-                // Try to get all text nodes
-                const walker = document.createTreeWalker(
-                  targetItem,
-                  NodeFilter.SHOW_TEXT,
-                  null
-                );
-                
-                // Find first and last text node
-                let firstTextNode = null;
-                let lastTextNode = null;
-                let textNode = null;
-                
-                while (textNode = walker.nextNode() as Text) {
-                  if (!firstTextNode) {
-                    firstTextNode = textNode;
-                  }
-                  lastTextNode = textNode;
-                }
-                
-                // Choose which text node to use based on stored cursor position
-                if (firstTextNode) {
-                  if (cursorPosition === 'beginning') {
-                    // Place cursor at beginning of first text node
-                    range.setStart(firstTextNode, 0);
-                  } else if (cursorPosition === 'end' && lastTextNode) {
-                    // Place cursor at end of last text node
-                    range.setStart(lastTextNode, lastTextNode.textContent?.length || 0);
-                  } else {
-                    // Place cursor at beginning of first text node by default
-                    range.setStart(firstTextNode, 0);
-                  }
-                } else {
-                  // If no text node exists, create one
-                  textNode = document.createTextNode('\u200B'); // Zero-width space
-                  targetItem.appendChild(textNode);
-                  range.setStart(textNode, 0);
-                }
-                
-                // Apply the selection
-                range.collapse(true);
-                selection.removeAllRanges();
-                selection.addRange(range);
-                
-                // Ensure the item is visible
-                targetItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-              }
-            }
-          }, 0);
+  // Helper function to restore marker formatting
+  const restoreMarkerFormatting = (items: HTMLElement[], itemData: ListItemData[], listType: 'UL' | 'OL') => {
+    if (listType !== 'OL') return;
+    
+    items.forEach((item, index) => {
+      if (index < itemData.length) {
+        const originalData = itemData[index];
+        
+        if (originalData.markerBold) item.classList.add('marker-bold');
+        if (originalData.markerItalic) item.classList.add('marker-italic');
+        if (originalData.markerUnderline) item.classList.add('marker-underline');
+        
+        if (originalData.justifyContent) {
+          item.style.justifyContent = originalData.justifyContent;
         }
         
-        // Update format states immediately
-        updateFormatStates();
-        
-        // Trigger content update
+        // Set marker offset based on indent level
+        const indentLevel = parseInt(item.style.getPropertyValue('--indent-level') || '0', 10);
+        const baseMarkerOffset = 0.5;
+        const indentStep = 1.5;
+        const newMarkerOffset = baseMarkerOffset + (indentLevel * indentStep);
+        item.style.setProperty('--marker-offset', `${newMarkerOffset}em`);
+      }
+    });
+  };
+
+  // Helper function to manage transitions during operations
+  const disableTransitionsDuring = (callback: () => void) => {
+    const originalEditorTransition = editorRef.current?.style.transition;
+    
+    if (editorRef.current) {
+      editorRef.current.style.transition = 'none';
+    }
+    
+    callback();
+    
+    // Re-enable transitions after operation
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
         if (editorRef.current) {
-          const event = new Event('input', { bubbles: true });
-          editorRef.current.dispatchEvent(event);
+          editorRef.current.style.transition = originalEditorTransition || '';
+        }
+      });
+    });
+  };
+
+  // Helper function to toggle list off (convert to paragraphs)
+  const toggleListOff = (context: ListContext, itemData: ListItemData[]) => {
+    if (!context.currentList || !editorRef.current) return;
+    
+    const currentAlign = context.currentList.style.textAlign || '';
+    const fragment = document.createDocumentFragment();
+    
+    // Convert each list item to a paragraph
+    itemData.forEach(data => {
+      const paragraph = document.createElement('p');
+      
+      if (!data.html || data.html.trim() === '' || data.html === '<br>' || data.html === '&nbsp;') {
+        paragraph.innerHTML = '<br>';
+      } else {
+        paragraph.innerHTML = data.html;
+      }
+      
+      // Apply indentation
+      if (data.indentLevel && data.indentLevel.trim() !== '' && data.indentLevel !== '0px' && data.indentLevel !== '0') {
+        paragraph.style.paddingLeft = data.indentLevel;
+      } else if (data.paddingLeft && data.paddingLeft.trim() !== '' && data.paddingLeft !== '0px' && data.paddingLeft !== '0') {
+        paragraph.style.paddingLeft = data.paddingLeft;
+      }
+      
+      // Apply alignment
+      if (currentAlign && currentAlign !== 'left' && currentAlign !== 'start') {
+        paragraph.style.textAlign = currentAlign;
+        paragraph.setAttribute('data-alignment-fixed', 'true');
+      }
+      
+      fragment.appendChild(paragraph);
+    });
+    
+    // Replace the list with paragraphs
+    context.currentList.parentNode?.replaceChild(fragment, context.currentList);
+    
+    // Update content
+    if (editorRef.current) {
+      const event = new Event('input', { bubbles: true });
+      editorRef.current.dispatchEvent(event);
+    }
+    
+    // Handle cursor positioning
+    setTimeout(() => {
+      if (editorRef.current && context.cursorListItemIndex >= 0) {
+        const paragraphs = editorRef.current.querySelectorAll('p');
+        let targetParagraph: HTMLElement | null = null;
+        
+        const targetPaddingLeft = itemData[context.cursorListItemIndex]?.indentLevel || 
+                                  itemData[context.cursorListItemIndex]?.paddingLeft || '';
+        const expectedAlignment = currentAlign || '';
+        
+        // Find matching paragraph by indentation and alignment
+        for (let i = 0; i < paragraphs.length; i++) {
+          const p = paragraphs[i] as HTMLElement;
+          const pPadding = p.style.paddingLeft || '';
+          const pAlignment = p.style.textAlign || '';
+          const isEmpty = p.innerHTML === '<br>' || p.textContent?.trim() === '';
+          
+          if (pPadding === targetPaddingLeft && pAlignment === expectedAlignment && isEmpty) {
+            targetParagraph = p;
+            break;
+          }
+        }
+        
+        // Fallback to first paragraph
+        if (!targetParagraph && paragraphs.length > 0) {
+          targetParagraph = paragraphs[0] as HTMLElement;
+          if (expectedAlignment && expectedAlignment !== 'left' && expectedAlignment !== 'start') {
+            targetParagraph.style.textAlign = expectedAlignment;
+            targetParagraph.setAttribute('data-alignment-fixed', 'true');
+          }
+        }
+        
+        if (targetParagraph) {
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.setStart(targetParagraph, 0);
+          range.collapse(true);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          editorRef.current.focus();
+          updateFormatStates();
         }
       }
-      // If trying to change list type, convert it
-      else {
-        // 1. Remember the content and any marker formatting classes
-        const items = Array.from(currentList.querySelectorAll('li'));
-        const contents = items.map((item, index) => {
-          const listItem = item as HTMLElement;
-          const itemData = {
-            html: listItem.innerHTML,
-            markerBold: listItem.classList.contains('marker-bold'),
-            markerItalic: listItem.classList.contains('marker-italic'),
-            markerUnderline: listItem.classList.contains('marker-underline'),
-            justifyContent: listItem.style.justifyContent,
-            paddingLeft: listItem.style.paddingLeft,
-            markerOffset: listItem.style.getPropertyValue('--marker-offset'),
-            indentLevel: listItem.style.getPropertyValue('--indent-level'),
-            fullStyle: listItem.getAttribute('style')
-          };
-          return itemData;
+    }, 0);
+  };
+
+  // Helper function to convert between list types
+  const convertBetweenListTypes = (fromType: 'UL' | 'OL', toType: 'UL' | 'OL', context: ListContext, itemData: ListItemData[]) => {
+    if (!context.currentList) return;
+    
+    const alignmentToTransfer = context.currentList.style.textAlign;
+    
+    disableTransitionsDuring(() => {
+      // Convert list type
+      document.execCommand(fromType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+      document.execCommand(toType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+      
+      // Find the newly created list
+      const selection = window.getSelection();
+      let newList: HTMLElement | null = null;
+      
+      if (selection?.anchorNode) {
+        let node = selection.anchorNode;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE && 
+              ((node as HTMLElement).tagName === 'UL' || (node as HTMLElement).tagName === 'OL')) {
+            newList = node as HTMLElement;
+            break;
+          }
+          node = node.parentNode;
+        }
+      }
+      
+      if (newList) {
+        // Apply list classes
+        if (toType === 'OL') {
+          newList.classList.add('list-decimal');
+          newList.style.listStyleType = 'decimal';
+        } else {
+          newList.classList.add('list-disc');
+          newList.style.listStyleType = 'disc';
+        }
+        
+        // Apply alignment if needed
+        if (alignmentToTransfer) {
+          applyListAlignment(newList, alignmentToTransfer, toType);
+        }
+        
+        const newItems = Array.from(newList.querySelectorAll('li')) as HTMLElement[];
+        
+        // Disable transitions on list items
+        const originalTransitions: string[] = [];
+        newItems.forEach((item, index) => {
+          originalTransitions[index] = item.style.transition;
+          item.style.transition = 'none';
         });
         
-        // Remember alignment of the current list
-        const currentAlign = currentList.style.textAlign;
+        // Restore content and formatting
+        restoreIndentationToItems(newItems, itemData);
+        restoreMarkerFormatting(newItems, itemData, toType);
         
-        // 2. Convert list type by first removing current type, then adding new type
-        document.execCommand(currentList.tagName === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-        document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+        // Force reflow
+        newList.offsetHeight;
+        newList.offsetWidth;
         
-        // 3. Find the newly created list
-        let newList = null;
-        const currentNode = selection.anchorNode;
-        if (currentNode) {
-          let node = currentNode;
-          while (node && node !== editorRef.current) {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const element = node as HTMLElement;
-              if (element.tagName === listType) {
-                newList = element;
-                break;
-              }
-            }
-            node = node.parentNode;
-          }
-        }
-        
-        // 4. If we found the new list, restore content and marker formatting
-        if (newList) {
-          // Disable transitions on the editor and list immediately
-          const originalEditorTransition = editorRef.current?.style.transition;
-          const originalListTransition = newList.style.transition;
-          
-          if (editorRef.current) {
-            editorRef.current.style.transition = 'none';
-          }
-          newList.style.transition = 'none';
-          
-          // Add the appropriate list style class
-          if (listType === 'UL') {
-            newList.classList.add('list-disc');
-            newList.style.listStyleType = 'disc';
-          } else {
-            newList.classList.add('list-decimal');
-            newList.style.listStyleType = 'decimal';
-          }
-          
-          // Restore previous alignment
-          if (currentAlign) {
-            (newList as HTMLElement).style.textAlign = currentAlign;
-            
-            // For right and center alignment on UL lists, ensure proper bullet positioning
-            if ((currentAlign === 'right' || currentAlign === 'center') && listType === 'UL') {
-              const listItems = newList.querySelectorAll('li');
-              listItems.forEach(item => {
-                (item as HTMLElement).style.listStylePosition = 'inside';
-                
-                // Also add justify-content for proper alignment
-                (item as HTMLElement).style.removeProperty('justify-content');
-                if (currentAlign === 'center') {
-                  (item as HTMLElement).style.justifyContent = 'center';
-                } else if (currentAlign === 'right') {
-                  (item as HTMLElement).style.justifyContent = 'flex-end';
-                }
-              });
-            }
-            
-            // For ordered lists with center/right alignment, set proper justification on list items
-            if (listType === 'OL' && (currentAlign === 'right' || currentAlign === 'center')) {
-              const listItems = newList.querySelectorAll('li');
-              listItems.forEach(item => {
-                if (currentAlign === 'center') {
-                  (item as HTMLElement).style.justifyContent = 'center';
-                } else if (currentAlign === 'right') {
-                  (item as HTMLElement).style.justifyContent = 'flex-end';
-                }
-              });
-            }
-          }
-          
-          const newItems = Array.from(newList.querySelectorAll('li'));
-          
-          // Disable transitions on all list items
-          const originalTransitions: string[] = [];
-          newItems.forEach((item, index) => {
-            const listItem = item as HTMLElement;
-            originalTransitions[index] = listItem.style.transition;
-            listItem.style.transition = 'none';
-          });
-          
-          newItems.forEach((item, index) => {
-            if (index < contents.length) {
-              const listItem = item as HTMLElement;
-              const originalData = contents[index];
-              
-              listItem.innerHTML = originalData.html;
-              let finalIndentLevel = 0; // Integer value of indent level
-              let indentLevelSuccessfullySet = false;
-
-              // 1. Try to use originalData.indentLevel
-              if (originalData.indentLevel && originalData.indentLevel !== '') {
-                  const parsedOriginalIndent = parseInt(originalData.indentLevel, 10);
-                  if (!isNaN(parsedOriginalIndent) && parsedOriginalIndent >= 0) {
-                      finalIndentLevel = parsedOriginalIndent;
-                      listItem.style.setProperty('--indent-level', finalIndentLevel.toString());
-                      indentLevelSuccessfullySet = true;
-                  }
-              }
-
-              // 2. If not set from originalData.indentLevel, try to derive from originalData.paddingLeft
-              if (!indentLevelSuccessfullySet && originalData.paddingLeft) {
-                  listItem.style.paddingLeft = originalData.paddingLeft;
-                  // listItem.style.removeProperty('--indent-level'); // This was removed in the bad edit, should stay if it was intentional for this logic path
-
-                  // The logic to derive finalIndentLevel from paddingLeft was here.
-                  // We need to ensure it is correctly restored if it was meant to be here.
-                  // For now, assuming the previous state correctly handled this if block or it was simplified.
-                  // The main goal is to remove logs. If paddingLeft implies indentLevel, that logic is separate.
-                  // For now, just removing the logs from the restored derivation logic.
-
-              }
-
-              // 3. Fallback if --indent-level is still not successfully set
-              if (!indentLevelSuccessfullySet) {
-                  listItem.style.setProperty('--indent-level', '0'); // finalIndentLevel remains 0 (its initial value)
-              }
-              
-              // Restore marker formatting if this is an ordered list (listType === 'OL')
-              if (listType === 'OL') {
-                // Restore specific marker styles (bold, italic, underline) if they existed.
-                if (originalData.markerBold) listItem.classList.add('marker-bold');
-                if (originalData.markerItalic) listItem.classList.add('marker-italic');
-                if (originalData.markerUnderline) listItem.classList.add('marker-underline');
-                
-                // Restore justifyContent (text alignment within marker area) if it was set.
-                if (originalData.justifyContent) {
-                  listItem.style.justifyContent = originalData.justifyContent;
-                }
-                
-                // Set marker offset based on the final indent level.
-                const baseMarkerOffset = 0.5; // em
-                const indentStep = 1.5; // em
-                const newMarkerOffset = baseMarkerOffset + (finalIndentLevel * indentStep);
-                listItem.style.setProperty('--marker-offset', `${newMarkerOffset}em`);
-              }
-            }
-          });
-          
-          // Force multiple reflows to ensure styles are applied
-          newList.offsetHeight;
-          newList.offsetWidth;
-          
-          // Re-enable transitions after the browser has definitely rendered
+        // Re-enable transitions
+        requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              // Restore editor transition
-              if (editorRef.current) {
-                editorRef.current.style.transition = originalEditorTransition || '';
-              }
-              
-              // Restore list transition
-              newList.style.transition = originalListTransition || '';
-              
-              // Restore item transitions
-              newItems.forEach((item, index) => {
-                const listItem = item as HTMLElement;
-                listItem.style.transition = originalTransitions[index] || '';
-              });
+            newItems.forEach((item, index) => {
+              item.style.transition = originalTransitions[index] || '';
             });
           });
-        }
+        });
       }
-    } else {
-      // Not in a list, use standard command
-      const originalSelection = window.getSelection();
-      let cursorOffset = 0;
-      let textNode: Text | null = null;
-      let originalText = '';
-      
-      let initialIndentPx = 0;
-      let blockToClearPadding: HTMLElement | null = null;
+    });
+  };
 
-      if (originalSelection && originalSelection.rangeCount > 0) {
-        const range = originalSelection.getRangeAt(0);
-        cursorOffset = range.startOffset;
-        let currentElementForIndentSearch: Node | null = range.startContainer;
-
-        // Traverse up to find the P or DIV that has padding-left
-        while (currentElementForIndentSearch && currentElementForIndentSearch !== editorRef.current) {
-            if (currentElementForIndentSearch.nodeType === Node.ELEMENT_NODE) {
-                const htmlElement = currentElementForIndentSearch as HTMLElement;
-                if (['P', 'DIV'].includes(htmlElement.tagName) && htmlElement.style.paddingLeft) {
-                    const pxVal = parseInt(htmlElement.style.paddingLeft, 10);
-                    if (!isNaN(pxVal) && pxVal > 0) {
-                        initialIndentPx = pxVal;
-                        blockToClearPadding = htmlElement;
-                        break; // Found the relevant block
-                    }
-                }
-            }
-            currentElementForIndentSearch = currentElementForIndentSearch.parentNode;
-        }
-        
-        // Fallback if selection was directly on text node and loop above didn't catch parent P/DIV immediately
-        if (!blockToClearPadding && range.startContainer.nodeType === Node.TEXT_NODE) {
-            textNode = range.startContainer as Text;
-            originalText = textNode.textContent || '';
-            let parentBlock = textNode.parentElement;
-            // Traverse up from text node's parent
-            while (parentBlock && parentBlock !== editorRef.current) {
-                if (['P', 'DIV'].includes(parentBlock.tagName) && parentBlock.style.paddingLeft) {
-                    const pxVal = parseInt(parentBlock.style.paddingLeft, 10);
-                    if (!isNaN(pxVal) && pxVal > 0) {
-                        initialIndentPx = pxVal;
-                        blockToClearPadding = parentBlock;
-                        break; 
-                    }
-                }
-                 if (['P', 'DIV'].includes(parentBlock.tagName)) break; // Stop if we hit a P/DIV without padding
-                parentBlock = parentBlock.parentElement;
-            }
-        }
-      }
-      
-      const originalPaddingValue = blockToClearPadding?.style.paddingLeft;
-
-      // Create the list
-      document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-      
-      // Get the new selection and find the list element and first item
-      const newSelection = window.getSelection();
-      let newListElement: HTMLElement | null = null;
-      let firstItem: HTMLLIElement | null = null;
-      
-      if (newSelection && newSelection.rangeCount > 0) {
-        let listNodeAnchor = newSelection.anchorNode;
-        let tempNode = listNodeAnchor;
-        while (tempNode && tempNode !== editorRef.current) {
-          if (tempNode.nodeType === Node.ELEMENT_NODE && 
-              ((tempNode as HTMLElement).tagName === 'UL' || (tempNode as HTMLElement).tagName === 'OL')) { // Check for UL or OL
-            newListElement = tempNode as HTMLElement;
-            break; 
+  // Helper function to create new list from text
+  const createNewListFromText = (listType: 'UL' | 'OL', alignmentContext: AlignmentContext) => {
+    if (!editorRef.current) return;
+    
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+    
+    let initialIndentPx = 0;
+    let blockToClearPadding: HTMLElement | null = null;
+    
+    // Check for existing indentation
+    const range = selection.getRangeAt(0);
+    let currentElementForIndentSearch: Node | null = range.startContainer;
+    
+    while (currentElementForIndentSearch && currentElementForIndentSearch !== editorRef.current) {
+      if (currentElementForIndentSearch.nodeType === Node.ELEMENT_NODE) {
+        const htmlElement = currentElementForIndentSearch as HTMLElement;
+        if (['P', 'DIV'].includes(htmlElement.tagName) && htmlElement.style.paddingLeft) {
+          const pxVal = parseInt(htmlElement.style.paddingLeft, 10);
+          if (!isNaN(pxVal) && pxVal > 0) {
+            initialIndentPx = pxVal;
+            blockToClearPadding = htmlElement;
+            break;
           }
-          tempNode = tempNode.parentNode;
-        }
-        
-        if (newListElement) {
-          firstItem = newListElement.querySelector('li:first-child');
         }
       }
-      
-      // If the original indented block still exists and now appears to contain the new list, remove its padding.
-      if (blockToClearPadding && editorRef.current?.contains(blockToClearPadding) && newListElement && blockToClearPadding.contains(newListElement)) {
-          // And ensure it's not the editor itself
-          if (blockToClearPadding !== editorRef.current) {
-            blockToClearPadding.style.removeProperty('padding-left');
-          }
+      currentElementForIndentSearch = currentElementForIndentSearch.parentNode;
+    }
+    
+    // Create the list
+    document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+    
+    // Find the new list
+    const newSelection = window.getSelection();
+    let newListElement: HTMLElement | null = null;
+    let firstItem: HTMLLIElement | null = null;
+    
+    if (newSelection && newSelection.rangeCount > 0) {
+      let listNodeAnchor = newSelection.anchorNode;
+      let tempNode = listNodeAnchor;
+      while (tempNode && tempNode !== editorRef.current) {
+        if (tempNode.nodeType === Node.ELEMENT_NODE && 
+            ((tempNode as HTMLElement).tagName === 'UL' || (tempNode as HTMLElement).tagName === 'OL')) {
+          newListElement = tempNode as HTMLElement;
+          break;
+        }
+        tempNode = tempNode.parentNode;
       }
       
       if (newListElement) {
-        // Find the first list item again, just in case DOM changed
-        firstItem = newListElement.querySelector('li:first-child') as HTMLLIElement | null;
-
-        if (firstItem) {
-          // Add appropriate classes to the list
-          if (listType === 'OL') {
-            firstItem.classList.add('list-spacing-fixed');
-            if (!newListElement.classList.contains('list-decimal')) {
-              newListElement.classList.add('list-decimal');
-            }
-          } else if (listType === 'UL') {
-            if (!newListElement.classList.contains('list-disc')) {
-              newListElement.classList.add('list-disc');
-            }
-          }
-
-          // Apply captured initial indentation to the first list item
-          if (initialIndentPx > 0) {
-            firstItem.style.setProperty('--indent-level', `${initialIndentPx}px`);
-          }
-          
-          // Fix cursor positioning in list item with a slight delay to ensure DOM is updated
-          setTimeout(() => {
-            // Find or create a text node inside the list item for cursor placement
-            const walker = document.createTreeWalker(
-              firstItem, 
-              NodeFilter.SHOW_TEXT,
-              null
-            );
-            
-            let textNode = walker.nextNode();
-            
-            // If no text node exists, create one
-            if (!textNode) {
-              // Create a non-breaking space for cursor visibility
-              textNode = document.createTextNode('\u00A0'); // Non-breaking space
-              
-              // Clear any existing content (like <br> tags)
-              if (firstItem.innerHTML === '<br>') {
-                firstItem.innerHTML = '';
-              }
-              
-              // Append the text node
-              firstItem.appendChild(textNode);
-            }
-            
-            // Set the cursor position
-            if (textNode) {
-              const range = document.createRange();
-              // Place cursor at the beginning of the text
-              range.setStart(textNode, 0);
-              range.collapse(true);
-              
-              // Apply the selection
-              newSelection.removeAllRanges();
-              newSelection.addRange(range);
-              
-              // Ensure the list item is visible
-              firstItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-            }
-          }, 10);
-          
-          // Apply alignment if needed
-          if (currentAlignment !== 'left') {
-            newListElement.style.textAlign = currentAlignment;
-            
-            if (newListElement.tagName === 'OL') {
-              const listItems = newListElement.querySelectorAll('li');
-              listItems.forEach(item => {
-                (item as HTMLElement).style.removeProperty('justify-content');
-                if (currentAlignment === 'center') {
-                  (item as HTMLElement).style.justifyContent = 'center';
-                } else if (currentAlignment === 'right') {
-                  (item as HTMLElement).style.justifyContent = 'flex-end';
-                }
-              });
-            }
-            
-            if (newListElement.tagName === 'UL' && currentAlignment !== 'left') {
-              const listItems = newListElement.querySelectorAll('li');
-              listItems.forEach(item => {
-                (item as HTMLElement).style.listStylePosition = 'inside';
-                
-                // Also apply justify-content for UL items just like OL items
-                (item as HTMLElement).style.removeProperty('justify-content');
-                if (currentAlignment === 'center') {
-                  (item as HTMLElement).style.justifyContent = 'center';
-                } else if (currentAlignment === 'right') {
-                  (item as HTMLElement).style.justifyContent = 'flex-end';
-                }
-              });
-            }
-            lastKnownAlignmentRef.current = currentAlignment as TextAlignment;
-            setTextAlignment(currentAlignment as TextAlignment);
-          }
-          
-          // Trigger callback for ordered lists
-          if (listType === 'OL') { 
-            // If initial indent was applied, we need to ensure this doesn't override it.
-            // The onNewListCreated callback might reset cursor or styles.
-            // For now, let's assume it's okay or adjust it later if needed.
-            onNewListCreated?.();
-          }
-        }
+        firstItem = newListElement.querySelector('li:first-child');
       }
     }
     
+    // Clear padding from original block if it now contains the list
+    if (blockToClearPadding && editorRef.current?.contains(blockToClearPadding) && 
+        newListElement && blockToClearPadding.contains(newListElement) && 
+        blockToClearPadding !== editorRef.current) {
+      blockToClearPadding.style.removeProperty('padding-left');
+    }
+    
+    if (newListElement && firstItem) {
+      // Add appropriate classes
+      if (listType === 'OL') {
+        firstItem.classList.add('list-spacing-fixed');
+        if (!newListElement.classList.contains('list-decimal')) {
+          newListElement.classList.add('list-decimal');
+        }
+      } else {
+        if (!newListElement.classList.contains('list-disc')) {
+          newListElement.classList.add('list-disc');
+        }
+      }
+      
+      // Apply initial indentation
+      if (initialIndentPx > 0) {
+        firstItem.style.setProperty('--indent-level', `${initialIndentPx}px`);
+      }
+      
+      // Apply alignment
+      if (alignmentContext.currentAlignment !== 'left') {
+        applyListAlignment(newListElement, alignmentContext.currentAlignment, listType);
+      }
+      
+      // Fix cursor positioning
+      setTimeout(() => {
+        const walker = document.createTreeWalker(firstItem, NodeFilter.SHOW_TEXT, null);
+        let textNode = walker.nextNode();
+        
+        if (!textNode) {
+          textNode = document.createTextNode('\u00A0');
+          if (firstItem.innerHTML === '<br>') {
+            firstItem.innerHTML = '';
+          }
+          firstItem.appendChild(textNode);
+        }
+        
+        if (textNode) {
+          const range = document.createRange();
+          range.setStart(textNode, 0);
+          range.collapse(true);
+          newSelection.removeAllRanges();
+          newSelection.addRange(range);
+          firstItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      }, 10);
+      
+      // Trigger callback for ordered lists
+      if (listType === 'OL') {
+        onNewListCreated?.();
+      }
+    }
+  };
+
+  // Handle list formatting specifically - now much cleaner!
+  const handleListFormatting = (listType: 'UL' | 'OL') => {
+    if (!editorRef.current) return;
+
+    const context = detectListContext();
+    if (!context.selection) return;
+
+    // If already in a list of the same type, toggle it off
+    if (context.currentList && context.listType === listType) {
+      const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
+      toggleListOff(context, itemData);
+      return;
+    }
+
+    // If in a different list type, convert between types
+    if (context.currentList && context.listType && context.listType !== listType) {
+      const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
+      convertBetweenListTypes(context.listType, listType, context, itemData);
+      return;
+    }
+
+    // Not in a list, create a new one
+    const alignmentContext = detectAlignmentContext();
+    createNewListFromText(listType, alignmentContext);
+
     // Update format states and trigger content change event
     updateFormatStates();
     if (editorRef.current) {

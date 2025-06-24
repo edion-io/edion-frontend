@@ -479,7 +479,44 @@ ${content}
       '#ffffff': 'white'
     };
     
-    return colorMap[hex.toLowerCase()] || hex;
+    const knownColor = colorMap[hex.toLowerCase()];
+    if (knownColor) {
+      return knownColor;
+    }
+    
+    // For unknown colors, try to convert hex to RGB format
+    const rgbResult = this.hexToRgb(hex);
+    return rgbResult || 'black'; // fallback to black if conversion fails
+  }
+  
+  private hexToRgb(hex: string): string | null {
+    // Validate and parse hex color (supports #rgb, #rrggbb formats)
+    const hexMatch = hex.match(/^#([a-f\d]{3}|[a-f\d]{6})$/i);
+    if (!hexMatch) {
+      return null;
+    }
+    
+    let r: number, g: number, b: number;
+    
+    if (hexMatch[1].length === 3) {
+      // Handle #rgb format (expand to #rrggbb)
+      const chars = hexMatch[1].split('');
+      r = parseInt(chars[0] + chars[0], 16);
+      g = parseInt(chars[1] + chars[1], 16);
+      b = parseInt(chars[2] + chars[2], 16);
+    } else {
+      // Handle #rrggbb format
+      r = parseInt(hexMatch[1].substr(0, 2), 16);
+      g = parseInt(hexMatch[1].substr(2, 2), 16);
+      b = parseInt(hexMatch[1].substr(4, 2), 16);
+    }
+    
+    // Convert to 0-1 range with 3 decimal places for LaTeX
+    const rNorm = (r / 255).toFixed(3);
+    const gNorm = (g / 255).toFixed(3);
+    const bNorm = (b / 255).toFixed(3);
+    
+    return `{rgb}{${rNorm},${gNorm},${bNorm}}`;
   }
   
   private latexColorToHex(latexColor: string): string {
