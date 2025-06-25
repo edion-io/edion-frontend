@@ -466,12 +466,12 @@ const EditorToolbar = ({
       }
     }
     
-    // Enhanced list item formatting logic
+    // Enhanced list item formatting logic for all formatting commands
     let listItem: HTMLElement | null = null;
     let shouldFormatMarker = false;
     const selection = window.getSelection();
     
-    if (selection && ['bold', 'italic', 'underline'].includes(command)) {
+    if (selection && ['bold', 'italic', 'underline', 'foreColor'].includes(command)) {
       // First, find if we're in a list item
       let node = selection.anchorNode;
       while (node && node !== editorRef.current) {
@@ -500,32 +500,56 @@ const EditorToolbar = ({
       }
     }
     
-    // Handle list marker formatting for both ordered and unordered lists
+    // Handle list marker formatting for all supported commands
     if (listItem && shouldFormatMarker) {
-      // Determine marker class based on the command
-      const markerClass = `marker-${command}`;
-      
-      // Toggle the marker class on the list item
-      if (listItem.classList.contains(markerClass)) {
-        listItem.classList.remove(markerClass);
-      } else {
-        listItem.classList.add(markerClass);
+      // Handle different command types
+      if (command === 'bold' || command === 'italic' || command === 'underline') {
+        // Existing class-based approach for bold/italic/underline
+        const markerClass = `marker-${command}`;
+        
+        // Toggle the marker class on the list item
+        if (listItem.classList.contains(markerClass)) {
+          listItem.classList.remove(markerClass);
+        } else {
+          listItem.classList.add(markerClass);
+        }
+      } else if (command === 'foreColor') {
+        // Handle text color for markers using CSS custom properties
+        const currentMarkerColor = listItem.style.getPropertyValue('--marker-color');
+        
+        if (currentMarkerColor === value) {
+          // If same color, remove the custom property (reset to default)
+          listItem.style.removeProperty('--marker-color');
+        } else {
+          // Set the new marker color
+          listItem.style.setProperty('--marker-color', value || '#000000');
+        }
       }
       
-      // If it's a bullet list, we need to apply styling to the ::marker in addition to the ::before
-      if (listItem.closest('ul')) {
-        // We can't directly style ::marker with JS, but we can add a class to the list item
-        // The CSS in RichTextArea.tsx should be updated to style UL markers as well
-      }
-      
-      // For cursor at beginning without selection, don't execute the content command
+      // For cursor at beginning without selection, don't execute the content command for colors
       // Only format the marker
       const range = selection.getRangeAt(0);
       const isAtBeginningWithoutSelection = range.collapsed && 
         ((range.startContainer === listItem && range.startOffset === 0) ||
          (range.startContainer === listItem.firstChild && range.startOffset === 0));
       
-      if (isAtBeginningWithoutSelection) {
+      if (isAtBeginningWithoutSelection && command === 'foreColor') {
+        // Update states based on the command
+        setCurrentTextColor(value || '#000000');
+
+        // Update format states
+        updateFormatStates();
+        
+        // Trigger input event to ensure changes are saved
+        if (editorRef.current) {
+          const event = new Event('input', { bubbles: true });
+          editorRef.current.dispatchEvent(event);
+        }
+        return; // Don't execute the content command
+      }
+      
+      // For bold/italic/underline, handle the existing logic
+      if (['bold', 'italic', 'underline'].includes(command) && isAtBeginningWithoutSelection) {
         // Update states
         switch (command) {
           case 'bold':
@@ -564,6 +588,12 @@ const EditorToolbar = ({
         break;
       case 'underline':
         setIsUnderline(document.queryCommandState(command));
+        break;
+      case 'foreColor':
+        setCurrentTextColor(value || '#000000');
+        break;
+      case 'hiliteColor':
+        setCurrentHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
         break;
     }
 
@@ -863,12 +893,18 @@ const EditorToolbar = ({
           currentNode = currentNode.parentNode;
         }
         
-        // If we found a list item, check for marker formatting classes
+        // If we found a list item, check for marker formatting classes and colors
         if (listItemElement) {
           // If the entire list item is selected, consider the marker formatting
           const isFullySelected = isListItemFullySelected(selection) !== null;
           
-          if (isFullySelected) {
+          // Also check if cursor is at beginning without selection
+          const range = selection.getRangeAt(0);
+          const isAtBeginningWithoutSelection = range.collapsed && 
+            ((range.startContainer === listItemElement && range.startOffset === 0) ||
+             (range.startContainer === listItemElement.firstChild && range.startOffset === 0));
+          
+          if (isFullySelected || isAtBeginningWithoutSelection) {
             // Update toolbar states based on marker classes
             const hasMarkerBold = listItemElement.classList.contains('marker-bold');
             const hasMarkerItalic = listItemElement.classList.contains('marker-italic');
@@ -879,6 +915,13 @@ const EditorToolbar = ({
             if (hasMarkerBold) setIsBold(true);
             if (hasMarkerItalic) setIsItalic(true);
             if (hasMarkerUnderline) setIsUnderline(true);
+            
+            // Check for marker colors
+            const markerColor = listItemElement.style.getPropertyValue('--marker-color');
+            
+            if (markerColor) {
+              setCurrentTextColor(normalizeColorToHex(markerColor));
+            }
           }
         }
       }
@@ -977,32 +1020,8 @@ const EditorToolbar = ({
     // Immediately update the current text color to reflect the change
     setCurrentTextColor(color);
     
-    // Only force focus if we're not already in a color picker interaction
-    const isInColorPickerInteraction = document.activeElement && 
-      (document.activeElement.closest('.popover-content') !== null);
-    
-    if (!isInColorPickerInteraction) {
-      execFormatCommand('foreColor', color);
-    } else {
-      // If we're in a picker interaction, just apply the command without focusing
-      if (editorRef.current) {
-        // Store the current selection
-        const selection = window.getSelection();
-        
-        // Only proceed if there's a valid selection
-        if (selection && selection.rangeCount > 0) {
-          // Apply the color without forcing focus
-          document.execCommand('foreColor', false, color);
-          
-          // Update states
-          updateFormatStates();
-          
-          // Trigger input event
-          const event = new Event('input', { bubbles: true });
-          editorRef.current.dispatchEvent(event);
-        }
-      }
-    }
+    // Use the enhanced execFormatCommand that handles list markers
+    execFormatCommand('foreColor', color);
     
     // Add to color history
     addToColorHistory(color);
@@ -1013,31 +1032,16 @@ const EditorToolbar = ({
     // Immediately update the current highlight color to reflect the change
     setCurrentHighlightColor(color);
     
-    // Only force focus if we're not already in a color picker interaction
-    const isInColorPickerInteraction = document.activeElement && 
-      (document.activeElement.closest('.popover-content') !== null);
+    // Use standard execCommand instead of enhanced version (no marker formatting for highlighting)
+    document.execCommand('hiliteColor', false, color);
     
-    if (!isInColorPickerInteraction) {
-      execFormatCommand('hiliteColor', color);
-    } else {
-      // If we're in a picker interaction, just apply the command without focusing
-      if (editorRef.current) {
-        // Store the current selection
-        const selection = window.getSelection();
-        
-        // Only proceed if there's a valid selection
-        if (selection && selection.rangeCount > 0) {
-          // Apply the highlight without forcing focus
-          document.execCommand('hiliteColor', false, color);
-          
-          // Update states
-          updateFormatStates();
-          
-          // Trigger input event
-          const event = new Event('input', { bubbles: true });
-          editorRef.current.dispatchEvent(event);
-        }
-      }
+    // Update format states
+    updateFormatStates();
+    
+    // Trigger input event to ensure changes are saved
+    if (editorRef.current) {
+      const event = new Event('input', { bubbles: true });
+      editorRef.current.dispatchEvent(event);
     }
     
     // Add to color history (except transparent)

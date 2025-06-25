@@ -1589,6 +1589,8 @@ const styles = `
   margin-right: 0.5em;
   box-sizing: border-box;
   text-align: right;
+  color: var(--marker-color, inherit);
+  transition: color 0.2s ease;
 }
 
 /* Marker formatting classes for bold, italic, underline */
@@ -1605,6 +1607,12 @@ const styles = `
 .rich-text-editor ol li.marker-underline::before,
 .rich-text-editor ul li.marker-underline::before {
   text-decoration: underline;
+}
+
+/* Ensure marker colors take precedence when set */
+.rich-text-editor ol li[style*="--marker-color"]::before,
+.rich-text-editor ul li[style*="--marker-color"]::before {
+  color: var(--marker-color) !important;
 }
 
 /* Number styling for ordered lists */
@@ -1664,7 +1672,7 @@ const styles = `
 /* Dark mode support for markers */
 .dark .rich-text-editor ol li::before,
 .dark .rich-text-editor ul li::before {
-  color: inherit;
+  color: var(--marker-color, inherit);
 }
 
 /* Keep counter resets */
