@@ -993,6 +993,10 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
                 p.style.textAlign = listAlignment;
                 // Add the data attribute to ensure it's preserved
                 p.setAttribute('data-alignment-fixed', 'true');
+              } else {
+                // If the list had left alignment (or no explicit alignment), ensure the paragraph reflects this
+                p.style.textAlign = 'left';
+                p.setAttribute('data-alignment-fixed', 'true');
               }
               
               fragment.appendChild(p);
@@ -1042,12 +1046,12 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               const indentLevel = listItem.style.getPropertyValue('--indent-level');
               const paddingLeft = listItem.style.paddingLeft;
               
-              // Get alignment from the list
-              const listAlignment = (list as HTMLElement).style.textAlign || '';
-              
-              // Replace the list with a paragraph
-              const p = document.createElement('p');
-              p.innerHTML = '<br>'; // Empty paragraph needs BR to be visible
+                          // Get alignment from the list
+            const listAlignment = (list as HTMLElement).style.textAlign || '';
+            
+            // Replace the list with a paragraph
+            const p = document.createElement('p');
+            p.innerHTML = '<br>'; // Empty paragraph needs BR to be visible
               
               // Apply indentation to the paragraph
               if (indentLevel && indentLevel.trim() !== '' && indentLevel !== '0px' && indentLevel !== '0') {
@@ -1061,9 +1065,15 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
                 p.style.textAlign = listAlignment;
                 // Add the data attribute to ensure it's preserved
                 p.setAttribute('data-alignment-fixed', 'true');
+              } else {
+                // If the list had left alignment (or no explicit alignment), ensure the paragraph reflects this
+                p.style.textAlign = 'left';
+                p.setAttribute('data-alignment-fixed', 'true');
               }
               
               list.parentNode?.replaceChild(p, list);
+              
+
               
               // Set cursor to the paragraph - improved for aligned paragraphs
               const newRange = document.createRange();
@@ -1190,6 +1200,10 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               p.style.textAlign = listAlignment;
               // Add the data attribute to ensure it's preserved
               p.setAttribute('data-alignment-fixed', 'true');
+            } else {
+              // If the list had left alignment (or no explicit alignment), ensure the paragraph reflects this
+              p.style.textAlign = 'left';
+              p.setAttribute('data-alignment-fixed', 'true');
             }
             
             // If this was the only item in the list, replace the entire list
@@ -1200,6 +1214,8 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               list.parentNode?.insertBefore(p, list);
               listItem.remove();
             }
+            
+
             
             // Set cursor to the paragraph - improved cursor positioning
             const newRange = document.createRange();

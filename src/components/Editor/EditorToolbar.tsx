@@ -629,10 +629,14 @@ const EditorToolbar = ({
   
   // Function to determine the current text alignment
   const getCurrentAlignment = (): TextAlignment => {
-    if (!editorRef.current) return lastKnownAlignmentRef.current;
+    if (!editorRef.current) {
+      return lastKnownAlignmentRef.current;
+    }
     
     const selection = window.getSelection();
-    if (!selection || !selection.rangeCount) return lastKnownAlignmentRef.current;
+    if (!selection || !selection.rangeCount) {
+      return lastKnownAlignmentRef.current;
+    }
     
     // Get the current node where the cursor is
     let node = selection.anchorNode;
@@ -642,26 +646,26 @@ const EditorToolbar = ({
     let currentNode = node;
     let foundAlignedElement = false;
     
-    // Check direct parents for inline alignment style first (highest priority)
+        // Check direct parents for inline alignment style first (highest priority)
     while (currentNode && currentNode !== editorRef.current) {
       if (currentNode.nodeType === Node.ELEMENT_NODE) {
         const element = currentNode as HTMLElement;
         
         // First check for direct inline style (highest priority)
         if (element.style && element.style.textAlign) {
-          // Only consider valid alignments
-          if (element.style.textAlign === 'center') {
-            lastKnownAlignmentRef.current = 'center';
-            return 'center';
-          }
-          if (element.style.textAlign === 'right') {
-            lastKnownAlignmentRef.current = 'right';
-            return 'right';
-          }
-          if (element.style.textAlign === 'left') {
-            lastKnownAlignmentRef.current = 'left';
-            return 'left';
-          }
+                  // Only consider valid alignments
+        if (element.style.textAlign === 'center') {
+          lastKnownAlignmentRef.current = 'center';
+          return 'center';
+        }
+        if (element.style.textAlign === 'right') {
+          lastKnownAlignmentRef.current = 'right';
+          return 'right';
+        }
+        if (element.style.textAlign === 'left') {
+          lastKnownAlignmentRef.current = 'left';
+          return 'left';
+        }
         }
         
         // Special handling for lists
@@ -697,19 +701,45 @@ const EditorToolbar = ({
           // Check if we have the data-alignment-fixed attribute (our custom marker)
           const hasFixedAlignment = element.hasAttribute('data-alignment-fixed');
           
-          // Only update if it's not the default left alignment or it has our fixed attribute
-          if (textAlign === 'center' || hasFixedAlignment) {
-            lastKnownAlignmentRef.current = 'center';
-            foundAlignedElement = true;
-            return 'center';
+          // If this paragraph has an explicit inline text-align style, use it
+          if (element.style.textAlign) {
+            if (element.style.textAlign === 'center') {
+              lastKnownAlignmentRef.current = 'center';
+              foundAlignedElement = true;
+              return 'center';
+            }
+            if (element.style.textAlign === 'right') {
+              lastKnownAlignmentRef.current = 'right';
+              foundAlignedElement = true;
+              return 'right';
+            }
+            if (element.style.textAlign === 'left') {
+              lastKnownAlignmentRef.current = 'left';
+              foundAlignedElement = true;
+              return 'left';
+            }
           }
-          if (textAlign === 'right' || hasFixedAlignment) {
-            lastKnownAlignmentRef.current = 'right';
-            foundAlignedElement = true;
-            return 'right';
-          }
+          
+          // If no inline style but has data-alignment-fixed, use computed style
           if (hasFixedAlignment) {
+            if (textAlign === 'center') {
+              lastKnownAlignmentRef.current = 'center';
+              foundAlignedElement = true;
+              return 'center';
+            }
+            if (textAlign === 'right') {
+              lastKnownAlignmentRef.current = 'right';
+              foundAlignedElement = true;
+              return 'right';
+            }
             // If we explicitly set left alignment, ensure it's honored
+            lastKnownAlignmentRef.current = 'left';
+            foundAlignedElement = true;
+            return 'left';
+          }
+          
+          // For paragraphs with no explicit alignment, treat as left (don't fall back to cached value)
+          if (!element.style.textAlign && !hasFixedAlignment) {
             lastKnownAlignmentRef.current = 'left';
             foundAlignedElement = true;
             return 'left';
@@ -853,7 +883,6 @@ const EditorToolbar = ({
   
   // Update formatting states based on current selection
   const updateFormatStates = () => {
-    // If editor doesn't have focus, don't update the alignment in the toolbar
     if (!editorHasFocusRef.current) {
       return;
     }
@@ -862,12 +891,8 @@ const EditorToolbar = ({
     const isNumbered = isInListType('OL');
     const alignment = getCurrentAlignment();
     
-    // Get the current selection
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
-      // Check if we're in a text node
-      let node = selection.anchorNode;
-      
       // Check formatting states using document.queryCommandState
       const boldState = document.queryCommandState('bold');
       const italicState = document.queryCommandState('italic');
@@ -882,7 +907,7 @@ const EditorToolbar = ({
       if (isInList) {
         // Find the list item containing the selection
         let listItemElement = null;
-        let currentNode = node;
+        let currentNode = selection.anchorNode;
         
         while (currentNode && currentNode !== editorRef.current) {
           if (currentNode.nodeType === Node.ELEMENT_NODE && 
@@ -962,16 +987,7 @@ const EditorToolbar = ({
         const isInEditor = editorRef.current?.contains(range.startContainer);
         
         if (isInEditor) {
-          // Only log if we have a special debug flag set
-          if ((window as any).__debugListOperations) {
-            console.log('👁️ SELECTION CHANGE:', {
-              startContainer: range.startContainer,
-              startOffset: range.startOffset,
-              nodeType: range.startContainer.nodeType,
-              textContent: range.startContainer.textContent,
-              parentElement: range.startContainer.parentElement?.tagName
-            });
-          }
+          // Track selection changes for any necessary UI updates
         }
       }
     };
@@ -1327,37 +1343,43 @@ const EditorToolbar = ({
 
   // Helper function to apply alignment to lists
   const applyListAlignment = (listElement: HTMLElement, alignment: string, listType: 'UL' | 'OL') => {
-    if (alignment !== 'left') {
-      listElement.style.textAlign = alignment;
-      
-      if (listType === 'OL') {
-        const listItems = listElement.querySelectorAll('li');
-        listItems.forEach(item => {
-          (item as HTMLElement).style.removeProperty('justify-content');
-          if (alignment === 'center') {
-            (item as HTMLElement).style.justifyContent = 'center';
-          } else if (alignment === 'right') {
-            (item as HTMLElement).style.justifyContent = 'flex-end';
-          }
-        });
-      }
-      
-      if (listType === 'UL' && alignment !== 'left') {
-        const listItems = listElement.querySelectorAll('li');
-        listItems.forEach(item => {
-          (item as HTMLElement).style.listStylePosition = 'inside';
-          (item as HTMLElement).style.removeProperty('justify-content');
-          if (alignment === 'center') {
-            (item as HTMLElement).style.justifyContent = 'center';
-          } else if (alignment === 'right') {
-            (item as HTMLElement).style.justifyContent = 'flex-end';
-          }
-        });
-      }
-      
-      lastKnownAlignmentRef.current = alignment as TextAlignment;
-      setTextAlignment(alignment as TextAlignment);
+    // Always set the alignment explicitly, including 'left'
+    listElement.style.textAlign = alignment;
+    
+    if (listType === 'OL') {
+      const listItems = listElement.querySelectorAll('li');
+      listItems.forEach(item => {
+        (item as HTMLElement).style.removeProperty('justify-content');
+        if (alignment === 'center') {
+          (item as HTMLElement).style.justifyContent = 'center';
+        } else if (alignment === 'right') {
+          (item as HTMLElement).style.justifyContent = 'flex-end';
+        }
+        // For left alignment, justify-content should be removed (which we already did above)
+      });
     }
+    
+    if (listType === 'UL') {
+      const listItems = listElement.querySelectorAll('li');
+      listItems.forEach(item => {
+        (item as HTMLElement).style.removeProperty('justify-content');
+        
+        if (alignment === 'center' || alignment === 'right') {
+          (item as HTMLElement).style.listStylePosition = 'inside';
+          if (alignment === 'center') {
+            (item as HTMLElement).style.justifyContent = 'center';
+          } else if (alignment === 'right') {
+            (item as HTMLElement).style.justifyContent = 'flex-end';
+          }
+        } else {
+          // For left alignment, reset list-style-position to default
+          (item as HTMLElement).style.removeProperty('list-style-position');
+        }
+      });
+    }
+    
+    lastKnownAlignmentRef.current = alignment as TextAlignment;
+    setTextAlignment(alignment as TextAlignment);
   };
 
   // Helper function to restore indentation to list items
@@ -1365,6 +1387,7 @@ const EditorToolbar = ({
     items.forEach((item, index) => {
       if (index < itemData.length) {
         const originalData = itemData[index];
+        
         item.innerHTML = originalData.html;
         
         let indentLevelSuccessfullySet = false;
@@ -1373,7 +1396,10 @@ const EditorToolbar = ({
         if (originalData.indentLevel && originalData.indentLevel !== '') {
           const parsedOriginalIndent = parseInt(originalData.indentLevel, 10);
           if (!isNaN(parsedOriginalIndent) && parsedOriginalIndent >= 0) {
-            item.style.setProperty('--indent-level', parsedOriginalIndent.toString());
+            // During restoration, set both paddingLeft directly AND --indent-level
+            // This ensures immediate visual effect while maintaining the CSS custom property
+            item.style.paddingLeft = `${parsedOriginalIndent}px`;
+            item.style.setProperty('--indent-level', `${parsedOriginalIndent}px`);
             indentLevelSuccessfullySet = true;
           }
         }
@@ -1381,11 +1407,17 @@ const EditorToolbar = ({
         // Fallback to paddingLeft
         if (!indentLevelSuccessfullySet && originalData.paddingLeft) {
           item.style.paddingLeft = originalData.paddingLeft;
+          // Also set --indent-level to match for consistency
+          const paddingValue = parseInt(originalData.paddingLeft, 10);
+          if (!isNaN(paddingValue)) {
+            item.style.setProperty('--indent-level', `${paddingValue}px`);
+          }
         }
 
         // Ensure --indent-level is set
         if (!indentLevelSuccessfullySet) {
-          item.style.setProperty('--indent-level', '0');
+          item.style.paddingLeft = '0px';
+          item.style.setProperty('--indent-level', '0px');
         }
       }
     });
@@ -1421,18 +1453,63 @@ const EditorToolbar = ({
   const disableTransitionsDuring = (callback: () => void) => {
     const originalEditorTransition = editorRef.current?.style.transition;
     
+    // Create a temporary style element to aggressively disable all transitions
+    const tempStyle = document.createElement('style');
+    tempStyle.id = 'temp-disable-transitions';
+    tempStyle.textContent = `
+      .rich-text-editor ol li,
+      .rich-text-editor ul li {
+        transition: none !important;
+      }
+      .rich-text-editor ol li *,
+      .rich-text-editor ul li * {
+        transition: none !important;
+      }
+    `;
+    document.head.appendChild(tempStyle);
+    
+    // Store and disable transitions on the editor
     if (editorRef.current) {
       editorRef.current.style.transition = 'none';
     }
     
+    // Store and disable transitions on all current list items
+    const allListItems = editorRef.current?.querySelectorAll('li') || [];
+    const originalTransitions: string[] = [];
+    allListItems.forEach((item, index) => {
+      const htmlItem = item as HTMLElement;
+      originalTransitions[index] = htmlItem.style.transition;
+      htmlItem.style.transition = 'none !important';
+    });
+    
     callback();
     
-    // Re-enable transitions after operation
+    // Re-enable transitions after operation with a delay to ensure DOM changes are complete
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        // Remove the temporary style element
+        const styleElement = document.getElementById('temp-disable-transitions');
+        if (styleElement) {
+          styleElement.remove();
+        }
+        
+        // Restore editor transition
         if (editorRef.current) {
           editorRef.current.style.transition = originalEditorTransition || '';
         }
+        
+        // Restore list item transitions, but need to find them again since they may have changed
+        const newListItems = editorRef.current?.querySelectorAll('li') || [];
+        newListItems.forEach((item, index) => {
+          const htmlItem = item as HTMLElement;
+          // Only restore if we have a stored transition for this index
+          if (index < originalTransitions.length) {
+            htmlItem.style.transition = originalTransitions[index] || '';
+          } else {
+            // For new items, remove the explicit transition to allow CSS to take over
+            htmlItem.style.removeProperty('transition');
+          }
+        });
       });
     });
   };
@@ -1465,18 +1542,42 @@ const EditorToolbar = ({
       if (currentAlign && currentAlign !== 'left' && currentAlign !== 'start') {
         paragraph.style.textAlign = currentAlign;
         paragraph.setAttribute('data-alignment-fixed', 'true');
+      } else {
+        // If the list had left alignment (or no explicit alignment), ensure the paragraph reflects this
+        paragraph.style.textAlign = 'left';
+        paragraph.setAttribute('data-alignment-fixed', 'true');
       }
       
       fragment.appendChild(paragraph);
     });
     
+    // Get reference to first paragraph before replacement
+    const firstParagraph = fragment.firstChild as HTMLElement;
+    
     // Replace the list with paragraphs
     context.currentList.parentNode?.replaceChild(fragment, context.currentList);
     
-    // Update content
-    if (editorRef.current) {
-      const event = new Event('input', { bubbles: true });
-      editorRef.current.dispatchEvent(event);
+    // Position cursor in the first newly created paragraph
+    if (firstParagraph) {
+      const selection = window.getSelection();
+      if (selection) {
+        const newRange = document.createRange();
+        if (firstParagraph.firstChild && firstParagraph.firstChild.nodeType === Node.TEXT_NODE) {
+          newRange.setStart(firstParagraph.firstChild, 0);
+        } else if (firstParagraph.firstChild) {
+          newRange.setStart(firstParagraph.firstChild, 0);
+        } else {
+          newRange.setStart(firstParagraph, 0);
+        }
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        
+        // Focus the editor to ensure the cursor is visible
+        if (editorRef.current) {
+          editorRef.current.focus();
+        }
+      }
     }
     
     // Update content
@@ -1484,6 +1585,11 @@ const EditorToolbar = ({
       const event = new Event('input', { bubbles: true });
       editorRef.current.dispatchEvent(event);
     }
+    
+    // Force immediate update of format states to ensure we detect the new paragraph
+    setTimeout(() => {
+      updateFormatStates();
+    }, 10);
   };
 
   // Helper function to convert between list types
@@ -1526,33 +1632,30 @@ const EditorToolbar = ({
         // Apply alignment if needed
         if (alignmentToTransfer) {
           applyListAlignment(newList, alignmentToTransfer, toType);
+        } else {
+          // Check if we should apply current alignment from toolbar state
+          const currentToolbarAlignment = getCurrentAlignment();
+          
+          if (currentToolbarAlignment !== 'left') {
+            applyListAlignment(newList, currentToolbarAlignment, toType);
+          }
         }
         
         const newItems = Array.from(newList.querySelectorAll('li')) as HTMLElement[];
-        
-        // Disable transitions on list items
-        const originalTransitions: string[] = [];
-        newItems.forEach((item, index) => {
-          originalTransitions[index] = item.style.transition;
-          item.style.transition = 'none';
-        });
         
         // Restore content and formatting
         restoreIndentationToItems(newItems, itemData);
         restoreMarkerFormatting(newItems, itemData, toType);
         
+        // Force immediate style application to prevent visual delays
+        newItems.forEach((item) => {
+          void item.offsetHeight;
+          void item.offsetWidth;
+        });
+        
         // Force reflow
         newList.offsetHeight;
         newList.offsetWidth;
-        
-        // Re-enable transitions
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            newItems.forEach((item, index) => {
-              item.style.transition = originalTransitions[index] || '';
-            });
-          });
-        });
         
         // Update content
         if (editorRef.current) {
