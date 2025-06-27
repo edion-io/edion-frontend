@@ -15,6 +15,21 @@ const EditorPage = () => {
   const INDENT_STEP_PX = 40;
   const PX_PER_EM_LEVEL_APPROX = 24; // Approx 1.5em * 16px/em, used for converting old em indents
 
+  // Calculate responsive maximum indentation based on editor width
+  const getMaxIndentPx = (): number => {
+    if (!editorRef.current) return 800; // Fallback to old limit
+    
+    const editorWidth = editorRef.current.offsetWidth;
+    const padding = 32; // Account for editor padding (16px * 2)
+    const availableWidth = editorWidth - padding;
+    
+    // Allow indentation up to 70% of available width, leaving 30% for content
+    const maxIndentPx = Math.floor(availableWidth * 0.7);
+    
+    // Ensure minimum space for content (at least 200px) and reasonable maximum
+    return Math.min(Math.max(maxIndentPx, 200), 1200);
+  };
+
   // Helper to get current effective indentation in PX for a list item
   const getEffectivePxIndentFromListItem = (listItem: HTMLElement): number => {
     const indentLevelStyle = listItem.style.getPropertyValue('--indent-level');
@@ -156,8 +171,10 @@ const EditorPage = () => {
       let currentPxIndent = getEffectivePxIndentFromListItem(listItem);
       let newPxIndent;
 
+      const maxIndent = getMaxIndentPx();
+      
       if (direction === 'indent') {
-        newPxIndent = Math.min(currentPxIndent + INDENT_STEP_PX, 20 * INDENT_STEP_PX); // Max 20 levels
+        newPxIndent = Math.min(currentPxIndent + INDENT_STEP_PX, maxIndent);
       } else { // outdent
         newPxIndent = Math.max(0, currentPxIndent - INDENT_STEP_PX);
       }
@@ -173,6 +190,13 @@ const EditorPage = () => {
         }
       });
 
+      // Add/remove visual indicator for maximum indent
+      if (direction === 'indent' && newPxIndent >= maxIndent) {
+        listItem.classList.add('max-indent-reached');
+      } else {
+        listItem.classList.remove('max-indent-reached');
+      }
+
       handleContentChange(editorRef.current.innerHTML);
     } 
     // Handle regular text blocks (paragraphs, divs, etc.)
@@ -181,13 +205,22 @@ const EditorPage = () => {
       const currentPxValue = parseFloat(currentPaddingString) || 0;
       let newPxPadding;
       
+      const maxIndent = getMaxIndentPx();
+      
       if (direction === 'indent') {
-        newPxPadding = Math.min(currentPxValue + INDENT_STEP_PX, 20 * INDENT_STEP_PX);
+        newPxPadding = Math.min(currentPxValue + INDENT_STEP_PX, maxIndent);
       } else { // outdent
         newPxPadding = Math.max(0, currentPxValue - INDENT_STEP_PX);
       }
 
       textBlock.style.paddingLeft = newPxPadding === 0 ? '' : `${newPxPadding}px`;
+
+      // Add/remove visual indicator for maximum indent
+      if (direction === 'indent' && newPxPadding >= maxIndent) {
+        textBlock.classList.add('max-indent-reached');
+      } else {
+        textBlock.classList.remove('max-indent-reached');
+      }
       handleContentChange(editorRef.current.innerHTML);
     }
     // If no list item or text block found, try to create an indented paragraph at the cursor position

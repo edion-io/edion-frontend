@@ -1404,12 +1404,16 @@ const EditorToolbar = ({
 
   // Helper function to detect alignment context
   const detectAlignmentContext = (): AlignmentContext => {
+    // First, check if we should use the toolbar state instead of DOM scanning
+    // This prevents using stale DOM alignment when the user has explicitly changed alignment
+    const toolbarAlignment = textAlignment || lastKnownAlignmentRef.current;
+    
     let currentAlignment = 'left';
     let alignedParentNode = null;
     
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) {
-      return { currentAlignment, alignedParentNode };
+      return { currentAlignment: toolbarAlignment, alignedParentNode };
     }
 
     const range = selection.getRangeAt(0);
@@ -1428,6 +1432,12 @@ const EditorToolbar = ({
         }
       }
       node = node.parentNode;
+    }
+    
+    // If we found DOM alignment but it conflicts with toolbar state, prefer toolbar state
+    if (currentAlignment !== toolbarAlignment) {
+      currentAlignment = toolbarAlignment;
+      alignedParentNode = null; // Clear the aligned parent since we're overriding
     }
     
     return { currentAlignment, alignedParentNode };

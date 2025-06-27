@@ -51,6 +51,21 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
   const PX_PER_EM_LEVEL = 24; // Approx 1.5em * 16px/em (used by toolbar for one indent step)
   const TAB_INDENT_STEP_PX = 40;
 
+  // Calculate responsive maximum indentation based on editor width
+  const getMaxIndentPx = (): number => {
+    if (!editorRef.current) return 800; // Fallback to old limit
+    
+    const editorWidth = editorRef.current.offsetWidth;
+    const padding = 32; // Account for editor padding (16px * 2)
+    const availableWidth = editorWidth - padding;
+    
+    // Allow indentation up to 70% of available width, leaving 30% for content
+    const maxIndentPx = Math.floor(availableWidth * 0.7);
+    
+    // Ensure minimum space for content (at least 200px) and reasonable maximum
+    return Math.min(Math.max(maxIndentPx, 200), 1200);
+  };
+
   const getEffectivePxIndent = (listItem: HTMLElement): number => {
     const indentLevelStyle = listItem.style.getPropertyValue('--indent-level');
 
@@ -84,7 +99,8 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
   
   const handleIndent = (listItem: HTMLElement, listElement: HTMLElement) => {
     let currentPxIndent = getEffectivePxIndent(listItem);
-    const newIndent = currentPxIndent + TAB_INDENT_STEP_PX;
+    const maxIndent = getMaxIndentPx();
+    const newIndent = Math.min(currentPxIndent + TAB_INDENT_STEP_PX, maxIndent);
     
     listItem.style.setProperty('--indent-level', `${newIndent}px`);
     listItem.style.removeProperty('padding-left');
@@ -92,6 +108,13 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
     listItem.classList.forEach(cls => {
       if (cls.startsWith('indent-')) listItem.classList.remove(cls);
     });
+
+    // Add visual indicator if at maximum indent
+    if (newIndent >= maxIndent) {
+      listItem.classList.add('max-indent-reached');
+    } else {
+      listItem.classList.remove('max-indent-reached');
+    }
   };
 
   const handleOutdent = (listItem: HTMLElement, listElement: HTMLElement) => {
@@ -115,6 +138,9 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
           if (cls.startsWith('indent-')) listItem.classList.remove(cls);
         });
       }
+
+      // Remove max indent indicator when outdenting
+      listItem.classList.remove('max-indent-reached');
     }
   };
   
@@ -190,8 +216,16 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
               if (listItem) {
                 // Apply list indent (simplified version)
                 const currentIndent = parseInt(listItem.style.getPropertyValue('--indent-level') || '0', 10);
-                const newIndent = Math.min(currentIndent + 40, 800); // Max 20 levels
+                const maxIndent = getMaxIndentPx();
+                const newIndent = Math.min(currentIndent + 40, maxIndent);
                 listItem.style.setProperty('--indent-level', `${newIndent}px`);
+                
+                // Add/remove visual indicator for maximum indent
+                if (newIndent >= maxIndent) {
+                  listItem.classList.add('max-indent-reached');
+                } else {
+                  listItem.classList.remove('max-indent-reached');
+                }
               } else {
                 // Apply paragraph indent
                 let paragraph = range.startContainer;
@@ -202,8 +236,17 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
                   if (paragraph.nodeType === Node.ELEMENT_NODE) {
                     const element = paragraph as HTMLElement;
                     if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) {
-                      const currentPadding = parseInt(element.style.paddingLeft || '0', 10);
-                      element.style.paddingLeft = `${currentPadding + 40}px`;
+                                          const currentPadding = parseInt(element.style.paddingLeft || '0', 10);
+                    const maxIndent = getMaxIndentPx();
+                    const newPadding = Math.min(currentPadding + 40, maxIndent);
+                    element.style.paddingLeft = `${newPadding}px`;
+                    
+                    // Add/remove visual indicator for maximum indent
+                    if (newPadding >= maxIndent) {
+                      element.classList.add('max-indent-reached');
+                    } else {
+                      element.classList.remove('max-indent-reached');
+                    }
                       break;
                     }
                   }
@@ -250,6 +293,9 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
                 } else {
                   listItem.style.setProperty('--indent-level', `${newIndent}px`);
                 }
+                
+                // Remove max indent indicator when outdenting
+                listItem.classList.remove('max-indent-reached');
               } else {
                 // Apply paragraph outdent
                 let paragraph = range.startContainer;
@@ -267,6 +313,9 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
                       } else {
                         element.style.paddingLeft = `${newPadding}px`;
                       }
+                      
+                      // Remove max indent indicator when outdenting
+                      element.classList.remove('max-indent-reached');
                       break;
                     }
                   }
@@ -638,9 +687,20 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
         if (e.shiftKey) { // Outdent
           const newPadding = Math.max(0, currentPadding - indentAmount);
           currentBlockElement.style.paddingLeft = newPadding === 0 ? '' : `${newPadding}px`;
+          
+          // Remove max indent indicator when outdenting
+          currentBlockElement.classList.remove('max-indent-reached');
         } else { // Indent
-          // You might want to add a max indent level here
-          currentBlockElement.style.paddingLeft = `${currentPadding + indentAmount}px`;
+          const maxIndent = getMaxIndentPx();
+          const newPadding = Math.min(currentPadding + indentAmount, maxIndent);
+          currentBlockElement.style.paddingLeft = `${newPadding}px`;
+
+          // Add/remove visual indicator for maximum indent
+          if (newPadding >= maxIndent) {
+            currentBlockElement.classList.add('max-indent-reached');
+          } else {
+            currentBlockElement.classList.remove('max-indent-reached');
+          }
         }
         
         // Update content
@@ -1843,6 +1903,23 @@ const styles = `
   outline: none;
   min-width: 1px;
   display: inline-block;
+}
+
+/* Visual feedback for maximum indentation */
+.rich-text-editor .max-indent-reached {
+  position: relative;
+}
+
+.rich-text-editor .max-indent-reached::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, #f59e0b, transparent);
+  opacity: 0.6;
+  pointer-events: none;
 }
 `;
 
