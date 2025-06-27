@@ -814,11 +814,11 @@ const EditorToolbar = ({
   
   // Function to get the computed color at a specific selection point
   const getColorAtSelection = (): string => {
-    // Default to black if no selection or editor ref
-    if (!editorRef.current) return '#000000';
+    // Default to current toolbar color if no selection or editor ref
+    if (!editorRef.current) return currentTextColorRef.current;
     
     const selection = window.getSelection();
-    if (!selection || !selection.rangeCount) return '#000000';
+    if (!selection || !selection.rangeCount) return currentTextColorRef.current;
     
     // Get the focused node and check if it's inside the editor
     const range = selection.getRangeAt(0);
@@ -857,17 +857,17 @@ const EditorToolbar = ({
       }
     }
     
-    // Default to black if no color is detected
-    return '#000000';
+    // Default to current toolbar color if no color is detected
+    return currentTextColorRef.current;
   };
 
   // Function to get the highlight color at the current selection
   const getHighlightColorAtSelection = (): string => {
-    // Default to transparent if no selection or editor ref
-    if (!editorRef.current) return 'transparent';
+    // Default to current toolbar highlight color if no selection or editor ref
+    if (!editorRef.current) return currentHighlightColorRef.current;
     
     const selection = window.getSelection();
-    if (!selection || !selection.rangeCount) return 'transparent';
+    if (!selection || !selection.rangeCount) return currentHighlightColorRef.current;
     
     // Get the focused node and check if it's inside the editor
     const range = selection.getRangeAt(0);
@@ -909,8 +909,8 @@ const EditorToolbar = ({
       }
     }
     
-    // Default to transparent if no highlight color is detected
-    return 'transparent';
+    // Default to current toolbar highlight color if no highlight color is detected
+    return currentHighlightColorRef.current;
   };
   
   // Update formatting states based on current selection
@@ -1009,12 +1009,23 @@ const EditorToolbar = ({
     const hasRecentTextColorChange = recentTextColorChangeRef.current && 
       (now - recentTextColorChangeRef.current.timestamp) < COLOR_OVERRIDE_DURATION;
     
+    // Check if editor is empty or has minimal content
+    const editorContent = editorRef.current?.textContent?.trim() || '';
+    const isEditorEmpty = editorContent.length === 0;
+    
     if (hasRecentTextColorChange) {
       // Don't update - preserve user's recent color choice
       // But ensure the ref matches the recent user choice
       if (recentTextColorChangeRef.current.color !== currentTextColorRef.current) {
         updateTextColor(recentTextColorChangeRef.current.color);
       }
+    } else if (isEditorEmpty) {
+      // If editor is empty, don't change the color unless it's the initial black state
+      // This prevents the color from reverting to black when all text is deleted
+      if (currentTextColorRef.current === '#000000' && detectedColor !== '#000000') {
+        updateTextColor(detectedColor);
+      }
+      // Otherwise, keep the current color
     } else {
       // Use ref for comparison to avoid stale state issues
       const currentRefColor = currentTextColorRef.current;
@@ -1043,6 +1054,13 @@ const EditorToolbar = ({
       if (recentHighlightColorChangeRef.current.color !== currentHighlightColorRef.current) {
         updateHighlightColor(recentHighlightColorChangeRef.current.color);
       }
+    } else if (isEditorEmpty) {
+      // If editor is empty, don't change the highlight color unless it's the initial transparent state
+      // This prevents the highlight color from reverting to transparent when all text is deleted
+      if (currentHighlightColorRef.current === 'transparent' && detectedHighlight !== 'transparent') {
+        updateHighlightColor(detectedHighlight);
+      }
+      // Otherwise, keep the current highlight color
     } else {
       // Use ref for comparison to avoid stale state issues
       const currentRefHighlight = currentHighlightColorRef.current;
