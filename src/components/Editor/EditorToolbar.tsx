@@ -325,6 +325,31 @@ const EditorToolbar = ({
   // New ref to store the last valid alignment when editor had focus
   const lastKnownAlignmentRef = useRef<TextAlignment>('left');
   
+  // Use refs as the source of truth for colors to avoid stale closure issues
+  const currentTextColorRef = useRef<string>('#000000');
+  const currentHighlightColorRef = useRef<string>('transparent');
+  
+  // Force re-render when colors change by using a version counter
+  const [colorVersion, setColorVersion] = useState(0);
+  
+  // Add refs to track recent user color changes
+  const recentTextColorChangeRef = useRef<{ color: string; timestamp: number } | null>(null);
+  const recentHighlightColorChangeRef = useRef<{ color: string; timestamp: number } | null>(null);
+  const COLOR_OVERRIDE_DURATION = 1000; // 1 second to prevent overrides
+  
+  // Helper functions to update colors and keep ref and state in sync
+  const updateTextColor = (color: string) => {
+    currentTextColorRef.current = color;
+    setCurrentTextColor(color);
+    setColorVersion(prev => prev + 1); // Force re-render
+  };
+  
+  const updateHighlightColor = (color: string) => {
+    currentHighlightColorRef.current = color;
+    setCurrentHighlightColor(color);
+    setColorVersion(prev => prev + 1); // Force re-render
+  };
+  
   // Function to add a color to the history
   const addToColorHistory = (color: string) => {
     // Don't add transparent to history
@@ -441,7 +466,9 @@ const EditorToolbar = ({
   
   // Modify execFormatCommand to only focus when necessary for text operations
   const execFormatCommand = (command: string, value?: string) => {
-    if (!editorRef.current) return;
+    if (!editorRef.current) {
+      return;
+    }
 
     // Only focus for direct text formatting commands
     const shouldFocus = ['bold', 'italic', 'underline', 'foreColor', 'hiliteColor', 
@@ -472,6 +499,7 @@ const EditorToolbar = ({
     const selection = window.getSelection();
     
     if (selection && ['bold', 'italic', 'underline', 'foreColor'].includes(command)) {
+      
       // First, find if we're in a list item
       let node = selection.anchorNode;
       while (node && node !== editorRef.current) {
@@ -502,6 +530,7 @@ const EditorToolbar = ({
     
     // Handle list marker formatting for all supported commands
     if (listItem && shouldFormatMarker) {
+      
       // Handle different command types
       if (command === 'bold' || command === 'italic' || command === 'underline') {
         // Existing class-based approach for bold/italic/underline
@@ -535,7 +564,7 @@ const EditorToolbar = ({
       
       if (isAtBeginningWithoutSelection && command === 'foreColor') {
         // Update states based on the command
-        setCurrentTextColor(value || '#000000');
+        updateTextColor(value || '#000000');
 
         // Update format states
         updateFormatStates();
@@ -581,19 +610,22 @@ const EditorToolbar = ({
     // Update states
     switch (command) {
       case 'bold':
-        setIsBold(document.queryCommandState(command));
+        const boldState = document.queryCommandState(command);
+        setIsBold(boldState);
         break;
       case 'italic':
-        setIsItalic(document.queryCommandState(command));
+        const italicState = document.queryCommandState(command);
+        setIsItalic(italicState);
         break;
       case 'underline':
-        setIsUnderline(document.queryCommandState(command));
+        const underlineState = document.queryCommandState(command);
+        setIsUnderline(underlineState);
         break;
       case 'foreColor':
-        setCurrentTextColor(value || '#000000');
+        updateTextColor(value || '#000000');
         break;
       case 'hiliteColor':
-        setCurrentHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
+        updateHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
         break;
     }
 
@@ -904,19 +936,20 @@ const EditorToolbar = ({
       
       // Check for list item marker formatting
       const isInList = isBullet || isNumbered;
+      
       if (isInList) {
         // Find the list item containing the selection
         let listItemElement = null;
         let currentNode = selection.anchorNode;
         
-        while (currentNode && currentNode !== editorRef.current) {
-          if (currentNode.nodeType === Node.ELEMENT_NODE && 
-              (currentNode as HTMLElement).tagName === 'LI') {
-            listItemElement = currentNode as HTMLElement;
-            break;
+                  while (currentNode && currentNode !== editorRef.current) {
+            if (currentNode.nodeType === Node.ELEMENT_NODE && 
+                (currentNode as HTMLElement).tagName === 'LI') {
+              listItemElement = currentNode as HTMLElement;
+              break;
+            }
+            currentNode = currentNode.parentNode;
           }
-          currentNode = currentNode.parentNode;
-        }
         
         // If we found a list item, check for marker formatting classes and colors
         if (listItemElement) {
@@ -937,15 +970,21 @@ const EditorToolbar = ({
             
             // Update the state only if the marker has formatting
             // (This might override the content formatting, but that's ok when selecting the whole item)
-            if (hasMarkerBold) setIsBold(true);
-            if (hasMarkerItalic) setIsItalic(true);
-            if (hasMarkerUnderline) setIsUnderline(true);
+            if (hasMarkerBold) {
+              setIsBold(true);
+            }
+            if (hasMarkerItalic) {
+              setIsItalic(true);
+            }
+            if (hasMarkerUnderline) {
+              setIsUnderline(true);
+            }
             
             // Check for marker colors
-            const markerColor = listItemElement.style.getPropertyValue('--marker-color');
+            const listMarkerColor = listItemElement.style.getPropertyValue('--marker-color');
             
-            if (markerColor) {
-              setCurrentTextColor(normalizeColorToHex(markerColor));
+            if (listMarkerColor) {
+              updateTextColor(normalizeColorToHex(listMarkerColor));
             }
           }
         }
@@ -961,13 +1000,60 @@ const EditorToolbar = ({
       setTextAlignment(alignment);
     }
     
-    // Update text color
+    // Update text color - but only if we're not in a list with marker formatting
+    // and only if the detected color is significantly different from current
     const detectedColor = getColorAtSelection();
-    setCurrentTextColor(detectedColor);
     
-    // Update highlight color
+    // Check if there's a recent user text color change
+    const now = Date.now();
+    const hasRecentTextColorChange = recentTextColorChangeRef.current && 
+      (now - recentTextColorChangeRef.current.timestamp) < COLOR_OVERRIDE_DURATION;
+    
+    if (hasRecentTextColorChange) {
+      // Don't update - preserve user's recent color choice
+      // But ensure the ref matches the recent user choice
+      if (recentTextColorChangeRef.current.color !== currentTextColorRef.current) {
+        updateTextColor(recentTextColorChangeRef.current.color);
+      }
+    } else {
+      // Use ref for comparison to avoid stale state issues
+      const currentRefColor = currentTextColorRef.current;
+      const colorDifference = Math.abs(parseInt(detectedColor.slice(1), 16) - parseInt(currentRefColor.slice(1), 16));
+      const isSignificantColorChange = colorDifference > 0x111111; // Only update if colors are significantly different
+      
+      // Only update text color in these cases:
+      // 1. If this is the initial state (currentTextColor is default black)
+      // 2. If there's a significant color difference (user moved to differently colored text)
+      // 3. If we're in a list and detected marker color (handled above)
+      if ((currentRefColor === '#000000' && detectedColor !== '#000000') || isSignificantColorChange) {
+        updateTextColor(detectedColor);
+      }
+    }
+    
+    // Update highlight color - similar logic
     const detectedHighlight = getHighlightColorAtSelection();
-    setCurrentHighlightColor(detectedHighlight);
+    
+    // Check if there's a recent user highlight color change
+    const hasRecentHighlightColorChange = recentHighlightColorChangeRef.current && 
+      (now - recentHighlightColorChangeRef.current.timestamp) < COLOR_OVERRIDE_DURATION;
+    
+    if (hasRecentHighlightColorChange) {
+      // Don't update - preserve user's recent color choice
+      // But ensure the ref matches the recent user choice
+      if (recentHighlightColorChangeRef.current.color !== currentHighlightColorRef.current) {
+        updateHighlightColor(recentHighlightColorChangeRef.current.color);
+      }
+    } else {
+      // Use ref for comparison to avoid stale state issues
+      const currentRefHighlight = currentHighlightColorRef.current;
+      // For highlight, be more conservative - only update if current is transparent and we detect a color
+      if (currentRefHighlight === 'transparent' && detectedHighlight !== 'transparent') {
+        updateHighlightColor(detectedHighlight);
+      } else if (detectedHighlight === 'transparent' && currentRefHighlight !== 'transparent') {
+        // If we detect transparent but have a color set, check if we moved to non-highlighted text
+        // Don't change - user might have selected non-highlighted text but still wants the highlight color in toolbar
+      }
+    }
   };
   
   // Track selection changes to update format states
@@ -1033,8 +1119,11 @@ const EditorToolbar = ({
   
   // Apply text color
   const applyTextColor = (color: string) => {
-    // Immediately update the current text color to reflect the change
-    setCurrentTextColor(color);
+    // Track this as a recent user color change
+    recentTextColorChangeRef.current = { color, timestamp: Date.now() };
+    
+    // Update both ref and state
+    updateTextColor(color);
     
     // Use the enhanced execFormatCommand that handles list markers
     execFormatCommand('foreColor', color);
@@ -1045,8 +1134,11 @@ const EditorToolbar = ({
   
   // Apply highlight color
   const applyHighlightColor = (color: string) => {
-    // Immediately update the current highlight color to reflect the change
-    setCurrentHighlightColor(color);
+    // Track this as a recent user color change
+    recentHighlightColorChangeRef.current = { color, timestamp: Date.now() };
+    
+    // Update both ref and state
+    updateHighlightColor(color);
     
     // Use standard execCommand instead of enhanced version (no marker formatting for highlighting)
     document.execCommand('hiliteColor', false, color);
@@ -1974,10 +2066,11 @@ const EditorToolbar = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <ColorPicker 
+              key={`text-color-${currentTextColorRef.current}-${colorVersion}`}
               onSelectColor={applyTextColor}
-              triggerIcon={<TextColorIcon className="h-4 w-4" color={currentTextColor} />}
+              triggerIcon={<TextColorIcon className="h-4 w-4" color={currentTextColorRef.current} />}
               label="Text color"
-              initialColor={currentTextColor}
+              initialColor={currentTextColorRef.current}
               showTransparentOption={false}
               recentColors={recentColors}
             />
@@ -1987,6 +2080,7 @@ const EditorToolbar = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <ColorPicker 
+              key={`highlight-color-${currentHighlightColorRef.current}-${colorVersion}`}
               onSelectColor={applyHighlightColor}
               triggerIcon={
                 <div className="relative">
@@ -1994,7 +2088,7 @@ const EditorToolbar = ({
                 </div>
               }
               label="Highlight color"
-              initialColor={currentHighlightColor}
+              initialColor={currentHighlightColorRef.current}
               showTransparentOption={true}
               recentColors={recentColors}
             />

@@ -29,6 +29,7 @@ interface RGB {
 
 export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
   ({ onSelectColor, triggerIcon, label, className = "", initialColor, showTransparentOption = false, recentColors = [] }, ref) => {
+    
     const [showCustom, setShowCustom] = useState(false);
     const [customColor, setCustomColor] = useState('#ff0000');
     const [selectedColor, setSelectedColor] = useState<string | null>(null);
