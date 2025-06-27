@@ -466,6 +466,9 @@ const EditorToolbar = ({
   
   // Modify execFormatCommand to only focus when necessary for text operations
   const execFormatCommand = (command: string, value?: string) => {
+    const operationId = Math.random().toString(36).substr(2, 9);
+    console.log(`🚀 [${operationId}] execFormatCommand started - command: ${command}, value: ${value}, timestamp: ${Date.now()}`);
+    
     if (!editorRef.current) {
       return;
     }
@@ -530,6 +533,8 @@ const EditorToolbar = ({
     
     // Handle list marker formatting for all supported commands
     if (listItem && shouldFormatMarker) {
+      console.log(`🎯 [${operationId}] Applying marker formatting for command: ${command}, value: ${value}, timestamp: ${Date.now()}`);
+      console.log(`  🎯 [${operationId}] List item: ${listItem.tagName}, shouldFormatMarker: ${shouldFormatMarker}`);
       
       // Handle different command types
       if (command === 'bold' || command === 'italic' || command === 'underline') {
@@ -539,19 +544,36 @@ const EditorToolbar = ({
         // Toggle the marker class on the list item
         if (listItem.classList.contains(markerClass)) {
           listItem.classList.remove(markerClass);
+          console.log('  🎯 Removed marker class:', markerClass);
         } else {
           listItem.classList.add(markerClass);
+          console.log('  🎯 Added marker class:', markerClass);
         }
       } else if (command === 'foreColor') {
         // Handle text color for markers using CSS custom properties
         const currentMarkerColor = listItem.style.getPropertyValue('--marker-color');
+        console.log('  🎯 Current marker color:', currentMarkerColor, 'new value:', value);
         
         if (currentMarkerColor === value) {
           // If same color, remove the custom property (reset to default)
           listItem.style.removeProperty('--marker-color');
+          console.log('  🎯 Removed marker color (same as current)');
         } else {
+          // Temporarily disable marker transitions for immediate color change
+          listItem.classList.add('disable-marker-transition');
+          
           // Set the new marker color
           listItem.style.setProperty('--marker-color', value || '#000000');
+          console.log('  🎯 Set marker color to:', value || '#000000');
+          
+          // Force a style recalculation to ensure immediate application
+          void listItem.offsetHeight; // Trigger reflow
+          
+          // Re-enable transitions after the DOM update is complete
+          requestAnimationFrame(() => {
+            listItem.classList.remove('disable-marker-transition');
+            console.log('  🎯 Marker color applied immediately (transition bypassed)');
+          });
         }
       }
       
@@ -605,37 +627,51 @@ const EditorToolbar = ({
     }
 
     // Execute command for the content (this will handle both marker and content when entire item is selected)
+    console.log(`📝 [${operationId}] Executing document.execCommand: ${command}, value: ${value}, timestamp: ${Date.now()}`);
+    const beforeTime = performance.now();
     document.execCommand(command, false, value);
+    const afterTime = performance.now();
+    console.log(`📝 [${operationId}] document.execCommand completed in: ${(afterTime - beforeTime).toFixed(2)}ms, timestamp: ${Date.now()}`);
 
     // Update states
+    console.log('🔄 Updating toolbar states for command:', command);
     switch (command) {
       case 'bold':
         const boldState = document.queryCommandState(command);
         setIsBold(boldState);
+        console.log('  🔄 Bold state updated to:', boldState);
         break;
       case 'italic':
         const italicState = document.queryCommandState(command);
         setIsItalic(italicState);
+        console.log('  🔄 Italic state updated to:', italicState);
         break;
       case 'underline':
         const underlineState = document.queryCommandState(command);
         setIsUnderline(underlineState);
+        console.log('  🔄 Underline state updated to:', underlineState);
         break;
       case 'foreColor':
         updateTextColor(value || '#000000');
+        console.log('  🔄 Text color state updated to:', value || '#000000');
         break;
       case 'hiliteColor':
         updateHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
+        console.log('  🔄 Highlight color state updated to:', value === 'transparent' ? 'transparent' : (value || 'transparent'));
         break;
     }
 
     // Update format states
+    console.log('🔄 About to update format states');
     updateFormatStates();
+    console.log('🔄 Format states updated');
     
     // Trigger input event to ensure changes are saved
     if (editorRef.current) {
+      console.log('📤 Triggering input event to save changes');
       const event = new Event('input', { bubbles: true });
       editorRef.current.dispatchEvent(event);
+      console.log('📤 Input event dispatched');
     }
   };
   
@@ -1137,14 +1173,22 @@ const EditorToolbar = ({
   
   // Apply text color
   const applyTextColor = (color: string) => {
+    console.log('🎨 applyTextColor called with color:', color);
+    const startTime = performance.now();
+    
     // Track this as a recent user color change
     recentTextColorChangeRef.current = { color, timestamp: Date.now() };
     
     // Update both ref and state
     updateTextColor(color);
+    console.log('🎨 Updated toolbar color state');
     
     // Use the enhanced execFormatCommand that handles list markers
+    console.log('🎨 About to call execFormatCommand');
     execFormatCommand('foreColor', color);
+    
+    const endTime = performance.now();
+    console.log('🎨 applyTextColor completed in:', (endTime - startTime).toFixed(2), 'ms');
     
     // Add to color history
     addToColorHistory(color);

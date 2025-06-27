@@ -1669,6 +1669,12 @@ const styles = `
   transition: color 0.2s ease;
 }
 
+/* Disable marker transitions when needed for immediate color changes */
+.rich-text-editor ol li.disable-marker-transition::before,
+.rich-text-editor ul li.disable-marker-transition::before {
+  transition: none !important;
+}
+
 /* Marker formatting classes for bold, italic, underline */
 .rich-text-editor ol li.marker-bold::before,
 .rich-text-editor ul li.marker-bold::before {
