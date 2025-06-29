@@ -79,10 +79,12 @@ const EditorPage = () => {
 
   // Callback for when a new list is created to fix cursor
   const handleNewListCreated = () => {
+    // Use a slightly longer timeout to ensure DOM changes are complete
     setTimeout(() => {
       if (!editorRef.current) return;
 
-      const lists = editorRef.current.querySelectorAll('ol');
+      // Handle both ordered and unordered lists
+      const lists = editorRef.current.querySelectorAll('ol, ul');
       if (lists.length === 0) {
         return;
       }
@@ -91,46 +93,45 @@ const EditorPage = () => {
       const firstItem = lastList.querySelector('li:first-child');
 
       if (firstItem) {
-        // Get the first text node in the list item
-        const walker = document.createTreeWalker(
-          firstItem,
-          NodeFilter.SHOW_TEXT,
-          null
-        );
-        
-        let textNode = walker.nextNode();
-        
-        // If no text node exists, create one
-        if (!textNode) {
-          // Clear any existing content (like <br> tags)
-          if (firstItem.innerHTML === '<br>') {
-            firstItem.innerHTML = '';
+        // Check if the list item is empty or needs cursor positioning
+        const textContent = firstItem.textContent || '';
+        const isEmpty = !textContent.trim() || 
+                       textContent === '\u00A0' || 
+                       textContent === '\u200B' ||
+                       firstItem.innerHTML === '<br>' ||
+                       firstItem.innerHTML === '';
+
+        // If empty, ensure it has a non-breaking space for cursor visibility
+        if (isEmpty) {
+          firstItem.innerHTML = '\u00A0'; // Non-breaking space
+        }
+
+        // Always position cursor at the beginning of the list item
+        const selection = window.getSelection();
+        if (selection) {
+          editorRef.current.focus();
+          
+          const range = document.createRange();
+          
+          // Position cursor at the beginning of the first text node if it exists
+          if (firstItem.firstChild && firstItem.firstChild.nodeType === Node.TEXT_NODE) {
+            range.setStart(firstItem.firstChild, 0);
+          } else if (firstItem.firstChild) {
+            range.setStart(firstItem.firstChild, 0);
+          } else {
+            range.setStart(firstItem, 0);
           }
           
-          // Create a non-breaking space for cursor visibility
-          textNode = document.createTextNode('\u00A0'); // Non-breaking space
-          firstItem.appendChild(textNode);
-        }
-        
-        // Set cursor to beginning of text node
-        if (textNode) {
-          const selection = window.getSelection();
-          if (selection) {
-            editorRef.current.focus();
-            
-            const range = document.createRange();
-            range.setStart(textNode, 0);
-            range.collapse(true);
-            
-            selection.removeAllRanges();
-            selection.addRange(range);
-            
-            // Ensure the list item is visible
-            firstItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-          }
+          range.collapse(true);
+          
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Ensure the list item is visible
+          firstItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         }
       }
-    }, 20); // Slightly longer delay to ensure DOM is fully updated
+    }, 50); // Longer delay to ensure all DOM manipulations are complete
   };
 
   // Indent/Outdent Logic

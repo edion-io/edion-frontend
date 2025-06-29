@@ -1914,8 +1914,8 @@ const EditorToolbar = ({
         applyListAlignment(newListElement, alignmentContext.currentAlignment, listType);
       }
       
-      // Trigger callback for ordered lists (unless we're preserving selection)
-      if (listType === 'OL' && !skipNewListCallback) {
+      // Trigger callback for all lists to ensure proper cursor positioning
+      if (!skipNewListCallback) {
         onNewListCreated?.();
       }
       
@@ -1931,29 +1931,44 @@ const EditorToolbar = ({
   const handleListFormatting = (listType: 'UL' | 'OL') => {
     if (!editorRef.current) return;
 
-    // Use selection preservation wrapper for all list operations
-    preserveSelectionDuringListOperation(editorRef.current, () => {
-      const context = detectListContext();
-      if (!context.selection) return;
+    const context = detectListContext();
+    if (!context.selection) return;
 
-      // If already in a list of the same type, toggle it off
-      if (context.currentList && context.listType === listType) {
-        const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
+    // If already in a list of the same type, toggle it off
+    if (context.currentList && context.listType === listType) {
+      // Use selection preservation for toggleing off
+      preserveSelectionDuringListOperation(editorRef.current, () => {
+        const itemData = preserveListItemData(Array.from(context.currentList!.querySelectorAll('li')) as HTMLElement[]);
         toggleListOff(context, itemData);
-        return;
+      });
+      
+      updateFormatStates();
+      if (editorRef.current) {
+        const event = new Event('input', { bubbles: true });
+        editorRef.current.dispatchEvent(event);
       }
+      return;
+    }
 
-      // If in a different list type, convert between types
-      if (context.currentList && context.listType && context.listType !== listType) {
-        const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
-        convertBetweenListTypes(context.listType, listType, context, itemData);
-        return;
+    // If in a different list type, convert between types
+    if (context.currentList && context.listType && context.listType !== listType) {
+      // Use selection preservation for list conversion
+      preserveSelectionDuringListOperation(editorRef.current, () => {
+        const itemData = preserveListItemData(Array.from(context.currentList!.querySelectorAll('li')) as HTMLElement[]);
+        convertBetweenListTypes(context.listType!, listType, context, itemData);
+      });
+      
+      updateFormatStates();
+      if (editorRef.current) {
+        const event = new Event('input', { bubbles: true });
+        editorRef.current.dispatchEvent(event);
       }
+      return;
+    }
 
-      // Not in a list, create a new one
-      const alignmentContext = detectAlignmentContext();
-      createNewListFromText(listType, alignmentContext, true); // Skip callback to preserve selection
-    });
+    // Not in a list, create a new one - don't use selection preservation to allow proper cursor positioning
+    const alignmentContext = detectAlignmentContext();
+    createNewListFromText(listType, alignmentContext, false); // Call callback for proper cursor positioning
 
     // Update format states and trigger content change event
     updateFormatStates();

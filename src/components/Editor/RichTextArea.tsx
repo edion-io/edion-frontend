@@ -1341,6 +1341,26 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
         }
       });
       
+      // Fix empty list items to ensure cursor visibility
+      const listItems = editor.querySelectorAll('li');
+      listItems.forEach(listItem => {
+        const element = listItem as HTMLElement;
+        // If list item is completely empty or only contains whitespace/zero-width chars
+        const textContent = element.textContent || '';
+        const isEmpty = !textContent.trim() || 
+                       textContent === '\u00A0' || 
+                       textContent === '\u200B' ||
+                       element.innerHTML === '<br>' ||
+                       element.innerHTML === '';
+        
+        if (isEmpty && !element.querySelector('br, math-field, img, table')) {
+          // Ensure it has a non-breaking space for cursor visibility
+          if (!textContent.includes('\u00A0')) {
+            element.innerHTML = '\u00A0'; // Non-breaking space
+          }
+        }
+      });
+      
       // Initialize MathLive fields in any newly added inline math
       initializeMathLiveFields();
     };
