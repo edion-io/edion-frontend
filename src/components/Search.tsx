@@ -12,12 +12,17 @@ const Search = () => {
   const [searchInput, setSearchInput] = useState("");
   const navigate = useNavigate();
 
-  // We declare a sound we want to use with howler on our script
-      const sound_send = new Howl({
-      src: ['/sounds/send_sound.mp3'],
-      volume: 0.7, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
-      loop: false
-      });
+  // We declare a sound we want to use with howler on our script, using the saved setting of sound volume
+  let soundVolume = 0.5; // Default value
+  const savedUserSettings = localStorage.getItem('userSettings');
+  if (savedUserSettings) {
+    soundVolume = JSON.parse(savedUserSettings).soundVolume;
+  }
+  const sound_send = new Howl({
+    src: ['/sounds/send_sound.mp3'],
+    volume: soundVolume, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+    loop: false
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

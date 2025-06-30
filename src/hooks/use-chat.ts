@@ -17,21 +17,28 @@ export const useChat = (userSettings: UserSettings) => {
   const [isLoading, setIsLoading] = useState(true);
   const [inputValue, setInputValue] = useState('');
 
+// We declare a sound we want to use with howler on our script, using the saved setting of sound volume
+  let soundVolume = 0.5; // Default value
+  const savedUserSettings = localStorage.getItem('userSettings');
+  if (savedUserSettings) {
+    soundVolume = JSON.parse(savedUserSettings).soundVolume;
+  }
+
 const sound_new_chat = new Howl({// We declare a new chat sound we want to use with howler on our script
   src: ['/sounds/new_chat_alert.mp3'],
-  volume: 0.7, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+  volume: soundVolume, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
   loop: false
   });
 
   const sound_send = new Howl({ //We declare a new send sound we want to use with howler on our script
   src: ['/sounds/send_sound.mp3'],
-  volume: 0.7, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+  volume: soundVolume, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
   loop: false
   });
 
   const sound_generate_message = new Howl({// We declare a new chat sound we want to use with howler on our script
   src: ['/sounds/generate_message.mp3'],
-  volume: 0.7, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+  volume: soundVolume, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
   loop: false
   });
 

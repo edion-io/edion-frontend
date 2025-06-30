@@ -48,6 +48,7 @@ export const getChatHistoryFromStorage = () => {
 };
 
 export const updateUserSettings = (newSettings: UserSettings): void => {
+  console.log(newSettings);
   // Save to localStorage
   localStorage.setItem('userSettings', JSON.stringify(newSettings));
   

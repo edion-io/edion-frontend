@@ -48,8 +48,9 @@ const Settings = () => {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [desktopNotifications, setDesktopNotifications] = useState(true);
 
-// Sound settings
+  // Sound settings
   const [soundsEnabled, toggleSoundEffects] = useState(true);
+  const [soundVolume, changeSoundVolume] = useState(0.5);
 
   useEffect(() => {
     const settings = getUserSettingsFromStorage();
@@ -90,11 +91,13 @@ const Settings = () => {
   };
 
   const handleSave = () => {
+    // Meter configuración nueva de sonidos
     const newSettings = {
       fullName,
       email,
       profilePicture,
       darkMode,
+      soundVolume,
     };
     
     updateUserSettings(newSettings);
@@ -300,7 +303,7 @@ const Settings = () => {
             <CardContent className='p-6'>
               {/* Titulo de la carta */}
               <div className="flex items-center gap-3 mb-6">
-                <Speaker className="h-5 w-5 text-muted-foreground" />
+                <Bell className="h-5 w-5 text-muted-foreground" />
                 <h2 className="text-lg font-medium">Sounds</h2>
               </div>
               {/* Contenido de la carta */}
@@ -332,6 +335,8 @@ const Settings = () => {
                     min={0}
                     max={1}
                     step={0.1}
+                    value={[soundVolume]} // Must be an array
+                    onValueChange={(value) => changeSoundVolume(value[0])}
                   />
                 </div>
 
