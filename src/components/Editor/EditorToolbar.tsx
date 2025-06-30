@@ -32,6 +32,7 @@ interface EditorToolbarProps {
   onOutdent: () => void;
   editorRef: React.RefObject<HTMLDivElement>;
   onNewListCreated?: () => void;
+  onFormatCommandReady?: (execFormatCommand: (command: string, value?: string) => void) => void;
 }
 
 type TextAlignment = 'left' | 'center' | 'right';
@@ -97,8 +98,6 @@ const captureTextSelection = (editorElement: HTMLElement): TextSelectionState =>
   
   const range = selection.getRangeAt(0);
   const selectedText = range.toString();
-  
-
   
   // Get the full text content of the editor
   const fullText = editorElement.textContent || '';
@@ -227,11 +226,9 @@ const restoreTextSelection = (editorElement: HTMLElement, selectionState: TextSe
       if (selection) {
         selection.removeAllRanges();
         selection.addRange(range);
-
       }
     } catch (e) {
-      // If range creation fails, try a simpler approach
-      console.warn('Failed to restore selection:', e);
+      // Silently handle selection restoration failures
     }
   }
 };
@@ -251,7 +248,6 @@ const preserveSelectionDuringListOperation = (
   // Use requestAnimationFrame to ensure DOM changes are complete
   requestAnimationFrame(() => {
     setTimeout(() => {
-
       restoreTextSelection(editorElement, selectionState);
     }, 5);
   });
@@ -304,7 +300,8 @@ const EditorToolbar = ({
   onIndent,
   onOutdent,
   editorRef,
-  onNewListCreated
+  onNewListCreated,
+  onFormatCommandReady
 }: EditorToolbarProps) => {
   // Track formatting states
   const [isBulletList, setIsBulletList] = useState(false);
@@ -377,9 +374,18 @@ const EditorToolbar = ({
     };
   }, [editorRef]);
   
+  // Expose execFormatCommand to parent component
+  useEffect(() => {
+    if (onFormatCommandReady) {
+      onFormatCommandReady(execFormatCommand);
+    }
+  }, [onFormatCommandReady]);
+  
   // Function to check if a list item is fully selected
   const isListItemFullySelected = (selection: Selection): HTMLElement | null => {
-    if (!selection || !selection.rangeCount) return null;
+    if (!selection || !selection.rangeCount) {
+      return null;
+    }
     
     const range = selection.getRangeAt(0);
     
@@ -397,10 +403,9 @@ const EditorToolbar = ({
     }
     
     // If not in a list item, return null
-    if (!listItem) return null;
-    
-    // Now we need to determine if the entire content is selected
-    // We have several cases to handle:
+    if (!listItem) {
+      return null;
+    }
     
     // Case 1: Selection starts and ends outside the list item but encompasses it
     if (range.startContainer !== listItem && 
@@ -412,8 +417,10 @@ const EditorToolbar = ({
       listItemRange.selectNodeContents(listItem);
       
       // If the selection contains the entire list item's content
-      if (range.compareBoundaryPoints(Range.START_TO_START, listItemRange) <= 0 &&
-          range.compareBoundaryPoints(Range.END_TO_END, listItemRange) >= 0) {
+      const startsBeforeOrAt = range.compareBoundaryPoints(Range.START_TO_START, listItemRange) <= 0;
+      const endsAfterOrAt = range.compareBoundaryPoints(Range.END_TO_END, listItemRange) >= 0;
+      
+      if (startsBeforeOrAt && endsAfterOrAt) {
         return listItem;
       }
     }
@@ -447,7 +454,9 @@ const EditorToolbar = ({
         range.startContainer === listItem.firstChild && 
         range.endContainer === listItem.firstChild) {
       const textNode = listItem.firstChild;
-      if (range.startOffset === 0 && range.endOffset === textNode.textContent?.length) {
+      const fullTextSelected = range.startOffset === 0 && range.endOffset === textNode.textContent?.length;
+      
+      if (fullTextSelected) {
         return listItem;
       }
     }
@@ -466,9 +475,6 @@ const EditorToolbar = ({
   
   // Modify execFormatCommand to only focus when necessary for text operations
   const execFormatCommand = (command: string, value?: string) => {
-    const operationId = Math.random().toString(36).substr(2, 9);
-    console.log(`🚀 [${operationId}] execFormatCommand started - command: ${command}, value: ${value}, timestamp: ${Date.now()}`);
-    
     if (!editorRef.current) {
       return;
     }
@@ -502,9 +508,9 @@ const EditorToolbar = ({
     const selection = window.getSelection();
     
     if (selection && ['bold', 'italic', 'underline', 'foreColor'].includes(command)) {
-      
       // First, find if we're in a list item
       let node = selection.anchorNode;
+      
       while (node && node !== editorRef.current) {
         if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === 'LI') {
           listItem = node as HTMLElement;
@@ -533,38 +539,145 @@ const EditorToolbar = ({
     
     // Handle list marker formatting for all supported commands
     if (listItem && shouldFormatMarker) {
-      console.log(`🎯 [${operationId}] Applying marker formatting for command: ${command}, value: ${value}, timestamp: ${Date.now()}`);
-      console.log(`  🎯 [${operationId}] List item: ${listItem.tagName}, shouldFormatMarker: ${shouldFormatMarker}`);
+      // For formatting commands on fully selected list items, we want to make both marker and content consistent
+      // Instead of just toggling, we need to determine the desired state
+      let desiredFormattingState = false;
       
       // Handle different command types
       if (command === 'bold' || command === 'italic' || command === 'underline') {
-        // Existing class-based approach for bold/italic/underline
         const markerClass = `marker-${command}`;
+        const hasMarkerFormatting = listItem.classList.contains(markerClass);
         
-        // Toggle the marker class on the list item
-        if (listItem.classList.contains(markerClass)) {
-          listItem.classList.remove(markerClass);
-          console.log('  🎯 Removed marker class:', markerClass);
+        // Check for content formatting - need to detect partial formatting too
+        let hasAnyContentFormatting = false;
+        let hasFullContentFormatting = false;
+        
+        // Get the current selection range
+        const range = selection.getRangeAt(0);
+        
+        // Check if there's any formatting in the selected content
+        const selectedContent = range.cloneContents();
+        const tempDiv = document.createElement('div');
+        tempDiv.appendChild(selectedContent);
+        
+        // Look for formatting tags in the selected content
+        const formatTags = command === 'bold' ? ['B', 'STRONG'] : 
+                          command === 'italic' ? ['I', 'EM'] : 
+                          ['U'];
+        
+        const foundFormatTags = formatTags.some(tag => 
+          tempDiv.querySelector(tag) !== null
+        );
+        
+        // Also check if the selection itself has formatting applied
+        const queryCommandState = document.queryCommandState(command);
+        
+        hasAnyContentFormatting = foundFormatTags || queryCommandState;
+        
+        // To check for full formatting, we need to see if the entire selection is formatted
+        // This is tricky with contentEditable, so we'll use a heuristic:
+        // If queryCommandState is true AND we don't find any unformatted text nodes, assume full formatting
+        if (queryCommandState) {
+          // Create a range for just text content to see if there are unformatted parts
+          const walker = document.createTreeWalker(
+            tempDiv,
+            NodeFilter.SHOW_TEXT,
+            null
+          );
+          
+          let hasUnformattedText = false;
+          let textNode;
+          while (textNode = walker.nextNode()) {
+            // Check if this text node is inside a formatting tag
+            let parent = textNode.parentNode;
+            let isFormatted = false;
+            while (parent && parent !== tempDiv) {
+              if (formatTags.includes(parent.nodeName)) {
+                isFormatted = true;
+                break;
+              }
+              parent = parent.parentNode;
+            }
+            
+            if (!isFormatted && textNode.textContent?.trim()) {
+              hasUnformattedText = true;
+              break;
+            }
+          }
+          
+          hasFullContentFormatting = !hasUnformattedText;
+          
+          // Additional check: if the entire list item content is selected and queryCommandState is true,
+          // it's very likely that all content is formatted
+          const isFullListItemSelection = isListItemFullySelected(selection) !== null;
+          if (isFullListItemSelection && queryCommandState) {
+            hasFullContentFormatting = true;
+          }
+          
         } else {
+          // If queryCommandState is false, check if there might still be formatting tags
+          // This can happen in some edge cases
+          hasFullContentFormatting = false;
+        }
+        
+        // Determine desired state:
+        // - If marker is formatted AND all content is fully formatted → remove formatting
+        // - Otherwise → add formatting to both marker and content
+        desiredFormattingState = !(hasMarkerFormatting && hasFullContentFormatting);
+        
+        // Apply marker formatting based on desired state
+        if (desiredFormattingState) {
           listItem.classList.add(markerClass);
-          console.log('  🎯 Added marker class:', markerClass);
+        } else {
+          listItem.classList.remove(markerClass);
+        }
+        
+        // For content formatting, we need to apply the desired state
+        // If we want formatting but content is not fully formatted, OR
+        // if we want no formatting but content has any formatting, then toggle
+        const needsContentToggle = 
+          (desiredFormattingState && !hasFullContentFormatting) ||
+          (!desiredFormattingState && hasAnyContentFormatting);
+        
+        if (needsContentToggle) {
+          // Continue to execCommand below
+        } else {
+          // Update states to reflect the current formatting
+          switch (command) {
+            case 'bold':
+              setIsBold(desiredFormattingState);
+              break;
+            case 'italic':
+              setIsItalic(desiredFormattingState);
+              break;
+            case 'underline':
+              setIsUnderline(desiredFormattingState);
+              break;
+          }
+
+          // Update format states
+          updateFormatStates();
+          
+          // Trigger input event to ensure changes are saved
+          if (editorRef.current) {
+            const event = new Event('input', { bubbles: true });
+            editorRef.current.dispatchEvent(event);
+          }
+          return; // Don't execute the content command since content is already in desired state
         }
       } else if (command === 'foreColor') {
         // Handle text color for markers using CSS custom properties
         const currentMarkerColor = listItem.style.getPropertyValue('--marker-color');
-        console.log('  🎯 Current marker color:', currentMarkerColor, 'new value:', value);
         
         if (currentMarkerColor === value) {
           // If same color, remove the custom property (reset to default)
           listItem.style.removeProperty('--marker-color');
-          console.log('  🎯 Removed marker color (same as current)');
         } else {
           // Temporarily disable marker transitions for immediate color change
           listItem.classList.add('disable-marker-transition');
           
           // Set the new marker color
           listItem.style.setProperty('--marker-color', value || '#000000');
-          console.log('  🎯 Set marker color to:', value || '#000000');
           
           // Force a style recalculation to ensure immediate application
           void listItem.offsetHeight; // Trigger reflow
@@ -572,7 +685,6 @@ const EditorToolbar = ({
           // Re-enable transitions after the DOM update is complete
           requestAnimationFrame(() => {
             listItem.classList.remove('disable-marker-transition');
-            console.log('  🎯 Marker color applied immediately (transition bypassed)');
           });
         }
       }
@@ -627,51 +739,43 @@ const EditorToolbar = ({
     }
 
     // Execute command for the content (this will handle both marker and content when entire item is selected)
-    console.log(`📝 [${operationId}] Executing document.execCommand: ${command}, value: ${value}, timestamp: ${Date.now()}`);
-    const beforeTime = performance.now();
-    document.execCommand(command, false, value);
-    const afterTime = performance.now();
-    console.log(`📝 [${operationId}] document.execCommand completed in: ${(afterTime - beforeTime).toFixed(2)}ms, timestamp: ${Date.now()}`);
+    const commandResult = document.execCommand(command, false, value);
+    
+    if (!commandResult) {
+      // Debug: Check if the browser supports this command
+      const isSupported = document.queryCommandSupported(command);
+      const isEnabled = document.queryCommandEnabled(command);
+    }
 
     // Update states
-    console.log('🔄 Updating toolbar states for command:', command);
     switch (command) {
       case 'bold':
         const boldState = document.queryCommandState(command);
         setIsBold(boldState);
-        console.log('  🔄 Bold state updated to:', boldState);
         break;
       case 'italic':
         const italicState = document.queryCommandState(command);
         setIsItalic(italicState);
-        console.log('  🔄 Italic state updated to:', italicState);
         break;
       case 'underline':
         const underlineState = document.queryCommandState(command);
         setIsUnderline(underlineState);
-        console.log('  🔄 Underline state updated to:', underlineState);
         break;
       case 'foreColor':
         updateTextColor(value || '#000000');
-        console.log('  🔄 Text color state updated to:', value || '#000000');
         break;
       case 'hiliteColor':
         updateHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
-        console.log('  🔄 Highlight color state updated to:', value === 'transparent' ? 'transparent' : (value || 'transparent'));
         break;
     }
 
     // Update format states
-    console.log('🔄 About to update format states');
     updateFormatStates();
-    console.log('🔄 Format states updated');
     
     // Trigger input event to ensure changes are saved
     if (editorRef.current) {
-      console.log('📤 Triggering input event to save changes');
       const event = new Event('input', { bubbles: true });
       editorRef.current.dispatchEvent(event);
-      console.log('📤 Input event dispatched');
     }
   };
   
@@ -1173,22 +1277,14 @@ const EditorToolbar = ({
   
   // Apply text color
   const applyTextColor = (color: string) => {
-    console.log('🎨 applyTextColor called with color:', color);
-    const startTime = performance.now();
-    
     // Track this as a recent user color change
     recentTextColorChangeRef.current = { color, timestamp: Date.now() };
     
     // Update both ref and state
     updateTextColor(color);
-    console.log('🎨 Updated toolbar color state');
     
     // Use the enhanced execFormatCommand that handles list markers
-    console.log('🎨 About to call execFormatCommand');
     execFormatCommand('foreColor', color);
-    
-    const endTime = performance.now();
-    console.log('🎨 applyTextColor completed in:', (endTime - startTime).toFixed(2), 'ms');
     
     // Add to color history
     addToColorHistory(color);
@@ -1996,7 +2092,9 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <Toggle 
               aria-label="Toggle bold" 
-              onClick={() => execFormatCommand('bold')}
+              onClick={() => {
+                execFormatCommand('bold');
+              }}
               pressed={isBold}
               data-state={isBold ? 'on' : 'off'}
               className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
@@ -2010,7 +2108,9 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <Toggle 
               aria-label="Toggle italic" 
-              onClick={() => execFormatCommand('italic')}
+              onClick={() => {
+                execFormatCommand('italic');
+              }}
               pressed={isItalic}
               data-state={isItalic ? 'on' : 'off'}
               className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
@@ -2024,7 +2124,9 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <Toggle 
               aria-label="Toggle underline" 
-              onClick={() => execFormatCommand('underline')}
+              onClick={() => {
+                execFormatCommand('underline');
+              }}
               pressed={isUnderline}
               data-state={isUnderline ? 'on' : 'off'}
               className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"

@@ -11,6 +11,9 @@ const EditorPage = () => {
   const [latexDocument, setLatexDocument] = useState<string>(buildLatexDocument(content));
   const { insertMathDelimiters } = useInlineMath();
   const editorRef = useRef<HTMLDivElement>(null);
+  
+  // State to store the execFormatCommand function from the toolbar
+  const [execFormatCommand, setExecFormatCommand] = useState<((command: string, value?: string) => void) | null>(null);
 
   const INDENT_STEP_PX = 40;
   const PX_PER_EM_LEVEL_APPROX = 24; // Approx 1.5em * 16px/em, used for converting old em indents
@@ -70,6 +73,11 @@ const EditorPage = () => {
   const handleContentChange = (newContent: string) => {
     setContent(newContent);
     setLatexDocument(buildLatexDocument(newContent));
+  };
+
+  // Callback to receive the execFormatCommand function from the toolbar
+  const handleFormatCommandReady = (formatCommand: (command: string, value?: string) => void) => {
+    setExecFormatCommand(() => formatCommand);
   };
 
   // Toggle raw LaTeX view
@@ -320,6 +328,7 @@ const EditorPage = () => {
           onOutdent={handleOutdent}
           editorRef={editorRef}
           onNewListCreated={handleNewListCreated}
+          onFormatCommandReady={handleFormatCommandReady}
         />
         
         {!showRawLatex ? (
@@ -328,6 +337,7 @@ const EditorPage = () => {
               content={content}
               onChange={handleContentChange}
               editorRef={editorRef}
+              onFormatCommand={execFormatCommand || undefined}
             />
           </div>
         ) : (

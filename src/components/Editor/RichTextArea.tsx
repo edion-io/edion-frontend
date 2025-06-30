@@ -22,6 +22,7 @@ interface RichTextAreaProps {
   content: string;
   onChange: (newContent: string) => void;
   editorRef: React.RefObject<HTMLDivElement>;
+  onFormatCommand?: (command: string, value?: string) => void;
 }
 
 // Add type declaration at the top of the file to support our custom property
@@ -31,7 +32,7 @@ declare global {
   }
 }
 
-const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
+const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTextAreaProps) => {
   const { handleKeyDown: handleInlineMathKeyDown, handleMathFieldDelete } = useInlineMath();
   
   // Define ordered list styles in sequence: decimal (1, 2, 3), alpha (a, b, c), roman (i, ii, iii)
@@ -154,26 +155,41 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
       switch (e.key.toLowerCase()) {
         case 'b':
           e.preventDefault();
-          document.execCommand('bold');
-          if (editorRef.current) {
-            const event = new Event('input', { bubbles: true });
-            editorRef.current.dispatchEvent(event);
+          if (onFormatCommand) {
+            onFormatCommand('bold');
+          } else {
+            // Fallback to direct command if no handler provided
+            document.execCommand('bold');
+            if (editorRef.current) {
+              const event = new Event('input', { bubbles: true });
+              editorRef.current.dispatchEvent(event);
+            }
           }
           return;
         case 'i':
           e.preventDefault();
-          document.execCommand('italic');
-          if (editorRef.current) {
-            const event = new Event('input', { bubbles: true });
-            editorRef.current.dispatchEvent(event);
+          if (onFormatCommand) {
+            onFormatCommand('italic');
+          } else {
+            // Fallback to direct command if no handler provided
+            document.execCommand('italic');
+            if (editorRef.current) {
+              const event = new Event('input', { bubbles: true });
+              editorRef.current.dispatchEvent(event);
+            }
           }
           return;
         case 'u':
           e.preventDefault();
-          document.execCommand('underline');
-          if (editorRef.current) {
-            const event = new Event('input', { bubbles: true });
-            editorRef.current.dispatchEvent(event);
+          if (onFormatCommand) {
+            onFormatCommand('underline');
+          } else {
+            // Fallback to direct command if no handler provided
+            document.execCommand('underline');
+            if (editorRef.current) {
+              const event = new Event('input', { bubbles: true });
+              editorRef.current.dispatchEvent(event);
+            }
           }
           return;
         case 'l':
@@ -1375,32 +1391,7 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
     };
   }, [onChange]);
   
-  // Add a MutationObserver to log style changes on LI elements for debugging
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
 
-    const observer = new MutationObserver((mutationsList) => {
-      for (const mutation of mutationsList) {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-          const targetElement = mutation.target as HTMLElement;
-          if (targetElement.tagName === 'LI') {
-            const computedStyle = window.getComputedStyle(targetElement);
-          }
-        }
-      }
-    });
-
-    observer.observe(editor, {
-      attributes: true,
-      subtree: true,
-      attributeFilter: ['style']
-    });
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [editorRef]); // Rerun if editorRef instance changes, though its .current is what matters
   
   // Add a MutationObserver to preserve alignment when list type changes
   useEffect(() => {
@@ -1427,7 +1418,6 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
     
     // Function to apply stored styles to a new list, based on item position
     const applyStoredStyles = (newList: HTMLElement) => {
-      
       // Clean up expired entries
       const now = Date.now();
       recentlyRemovedLists = recentlyRemovedLists.filter(entry => now - entry.time < RECENT_WINDOW_MS);
@@ -1509,10 +1499,6 @@ const RichTextArea = ({ content, onChange, editorRef }: RichTextAreaProps) => {
                 
                 // Capture all items and their styles
                 const itemsData = captureListItems(element);
-                
-                // Debug: log the first item's style if available
-                if (itemsData.length > 0) {
-                }
                 
                 // Store in recently removed lists
                 recentlyRemovedLists.push({
