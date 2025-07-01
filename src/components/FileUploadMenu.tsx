@@ -158,14 +158,11 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
                 <span>Google Drive</span>
               </button>
               
-              <button
+                            <button
                 onClick={handleOneDrive}
                 className="w-full flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm h-10"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5">
-                  <title>OneDrive</title>
-                  <path d="M20.08 13.64c-.05-.01-.09-.02-.14-.02-.17-.01-.34.03-.5.1-.04-1.45-.68-2.75-1.7-3.69-.93-.87-2.15-1.41-3.49-1.41-1.1 0-2.14.36-2.99.98-.84.61-1.47 1.46-1.79 2.44-.29-.07-.58-.11-.88-.11-1.24 0-2.37.59-3.13 1.57-.77.98-1.1 2.29-.9 3.57.01.05.01.11.02.16-1.11.38-1.9 1.45-1.9 2.68 0 1.57 1.24 2.84 2.77 2.84h11.15c1.83 0 3.32-1.53 3.32-3.41 0-1.65-1.16-3.03-2.69-3.35l.01-.01c.5-.6.82-1.34.84-2.16v-.18z" fill="#0078D4"/>
-                </svg>
+                <img src="/onedrive.svg" alt="OneDrive" className="h-5 w-5" />
                 <span>OneDrive</span>
               </button>
             </div>
