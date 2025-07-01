@@ -14,7 +14,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[380px]",
       className
     )}
     {...props}
@@ -23,13 +23,13 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const toastVariants = cva(
-  "w-full max-w-xl min-h-[56px] px-6 py-4 rounded-xl shadow-lg backdrop-blur-md border transition-all duration-300 ease-out animate-slide-up-fade data-[state=closed]:animate-slide-down-fade",
+  "w-full max-w-lg min-h-[52px] px-5 py-3.5 rounded-xl shadow-lg backdrop-blur-md border transition-all duration-300 ease-out animate-slide-up-fade data-[state=closed]:animate-slide-down-fade",
   {
     variants: {
       variant: {
-        default: "bg-white/85 dark:bg-gray-900/85 text-gray-900 dark:text-gray-100 border-gray-200/50 dark:border-gray-700/50",
-        destructive: "bg-red-50/90 dark:bg-red-950/90 text-red-900 dark:text-red-100 border-red-200/50 dark:border-red-800/50",
-        success: "bg-green-50/90 dark:bg-green-950/90 text-green-900 dark:text-green-100 border-green-200/50 dark:border-green-800/50",
+        default: "bg-slate-50/95 dark:bg-slate-800/95 text-slate-900 dark:text-slate-100 border-slate-200/60 dark:border-slate-600/60",
+        destructive: "bg-rose-50/95 dark:bg-rose-950/95 text-rose-900 dark:text-rose-100 border-rose-200/60 dark:border-rose-700/60",
+        success: "bg-indigo-50/95 dark:bg-blue-950/95 text-indigo-900 dark:text-blue-100 border-indigo-200/60 dark:border-blue-700/60",
       },
     },
     defaultVariants: {
@@ -75,13 +75,13 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-3 top-3 rounded-md p-1 text-gray-500/70 dark:text-gray-400/70 opacity-0 transition-opacity hover:text-gray-700 dark:hover:text-gray-200 focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-500/70 group-[.destructive]:hover:text-red-700 dark:group-[.destructive]:text-red-400/70 dark:group-[.destructive]:hover:text-red-200 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-50",
+      "absolute right-2 top-2 rounded-md p-1 text-gray-500/70 dark:text-gray-400/70 opacity-0 transition-opacity hover:text-gray-700 dark:hover:text-gray-200 focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-500/70 group-[.destructive]:hover:text-red-700 dark:group-[.destructive]:text-red-400/70 dark:group-[.destructive]:hover:text-red-200 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-50",
       className
     )}
     toast-close=""
     {...props}
   >
-    <X className="h-4 w-4" />
+    <X className="h-3.5 w-3.5" />
   </ToastPrimitives.Close>
 ))
 ToastClose.displayName = ToastPrimitives.Close.displayName
@@ -104,7 +104,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn("text-sm opacity-80", className)}
+    className={cn("text-xs opacity-80 text-center", className)}
     {...props}
   />
 ))
