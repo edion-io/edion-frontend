@@ -574,6 +574,15 @@ const EditorToolbar = ({
         
         hasAnyContentFormatting = foundFormatTags || queryCommandState;
         
+        // Debug content analysis
+        console.log(`[DEBUG] Content analysis details:`, {
+          selectedContentHTML: tempDiv.innerHTML,
+          foundFormatTags,
+          queryCommandState,
+          formatTags,
+          hasAnyContentFormatting
+        });
+        
         // To check for full formatting, we need to see if the entire selection is formatted
         // This is tricky with contentEditable, so we'll use a heuristic:
         // If queryCommandState is true AND we don't find any unformatted text nodes, assume full formatting
@@ -587,6 +596,7 @@ const EditorToolbar = ({
           
           let hasUnformattedText = false;
           let textNode;
+          const textNodeDetails = [];
           while (textNode = walker.nextNode()) {
             // Check if this text node is inside a formatting tag
             let parent = textNode.parentNode;
@@ -599,25 +609,58 @@ const EditorToolbar = ({
               parent = parent.parentNode;
             }
             
+            textNodeDetails.push({
+              text: textNode.textContent,
+              isFormatted,
+              parentNodeName: textNode.parentNode?.nodeName,
+              hasContent: !!textNode.textContent?.trim()
+            });
+            
             if (!isFormatted && textNode.textContent?.trim()) {
               hasUnformattedText = true;
-              break;
             }
           }
           
           hasFullContentFormatting = !hasUnformattedText;
           
+          console.log(`[DEBUG] Text node analysis:`, {
+            textNodeDetails,
+            hasUnformattedText,
+            hasFullContentFormatting,
+            formatTags
+          });
+          
           // Additional check: if the entire list item content is selected and queryCommandState is true,
-          // it's very likely that all content is formatted
+          // we should trust queryCommandState more than our tag analysis for full selections
+          // BUT only if we don't have unformatted text (mixed formatting case)
           const isFullListItemSelection = isListItemFullySelected(selection) !== null;
-          if (isFullListItemSelection && queryCommandState) {
+          console.log(`[DEBUG] Override check:`, {
+            isFullListItemSelection,
+            queryCommandState,
+            hasUnformattedText,
+            foundFormatTags,
+            willOverride: isFullListItemSelection && queryCommandState && !hasUnformattedText
+          });
+          
+          if (isFullListItemSelection && queryCommandState && !hasUnformattedText) {
+            // For full list item selections, if queryCommandState is true AND we don't have unformatted text,
+            // trust queryCommandState. The browser might be using inline styles or other formatting methods
+            // that our tag-based analysis doesn't detect
             hasFullContentFormatting = true;
+            console.log(`[DEBUG] Applied override: hasFullContentFormatting = true (trusting queryCommandState for full selection with no unformatted text)`);
           }
           
         } else {
           // If queryCommandState is false, check if there might still be formatting tags
           // This can happen in some edge cases
           hasFullContentFormatting = false;
+          
+          // But for full list item selections, if we found format tags, consider it formatted
+          const isFullListItemSelection = isListItemFullySelected(selection) !== null;
+          if (isFullListItemSelection && foundFormatTags) {
+            hasFullContentFormatting = true;
+            console.log(`[DEBUG] Override for queryCommandState=false: found format tags in full selection`);
+          }
         }
         
         // Determine desired state:
@@ -625,11 +668,46 @@ const EditorToolbar = ({
         // - Otherwise → add formatting to both marker and content
         desiredFormattingState = !(hasMarkerFormatting && hasFullContentFormatting);
         
+        // Fallback check: if marker is formatted and queryCommandState is true for full selection,
+        // assume we should remove formatting even if hasFullContentFormatting is false
+        const isFullListItemSelection = isListItemFullySelected(selection) !== null;
+        console.log(`[DEBUG] Fallback override check:`, {
+          hasMarkerFormatting,
+          isFullListItemSelection,
+          queryCommandState,
+          desiredFormattingStateBeforeOverride: desiredFormattingState,
+          willOverride: hasMarkerFormatting && isFullListItemSelection && queryCommandState && desiredFormattingState
+        });
+        
+        if (hasMarkerFormatting && isFullListItemSelection && queryCommandState && desiredFormattingState) {
+          console.log(`[DEBUG] Fallback override APPLIED: marker formatted + full selection + queryCommandState=true → REMOVE`);
+          desiredFormattingState = false; // Override to remove formatting
+        }
+        
+        // Debug the decision values
+        console.log(`[DEBUG] ${command} state detection:`, {
+          hasMarkerFormatting,
+          hasFullContentFormatting,
+          hasAnyContentFormatting,
+          queryCommandState,
+          isFullListItemSelection,
+          desiredFormattingState: desiredFormattingState ? 'ADD' : 'REMOVE',
+          markerClass,
+          listItemClasses: Array.from(listItem.classList)
+        });
+        
+        // Debug for fully formatted case
+        if (hasMarkerFormatting && hasFullContentFormatting) {
+          console.log(`[DEBUG] Fully formatted ${command} - will REMOVE formatting`);
+        }
+        
         // Apply marker formatting based on desired state
         if (desiredFormattingState) {
           listItem.classList.add(markerClass);
+          console.log(`[DEBUG] Added marker class: ${markerClass}`);
         } else {
           listItem.classList.remove(markerClass);
+          console.log(`[DEBUG] Removed marker class: ${markerClass}`);
         }
         
         // For content formatting, we need to apply the desired state
@@ -639,10 +717,61 @@ const EditorToolbar = ({
           (desiredFormattingState && !hasFullContentFormatting) ||
           (!desiredFormattingState && hasAnyContentFormatting);
         
+        // Debug for remove case
+        if (!desiredFormattingState) {
+          console.log(`[DEBUG] REMOVE ${command} decision:`, {
+            desiredFormattingState,
+            hasFullContentFormatting,
+            hasAnyContentFormatting,
+            needsContentToggle,
+            condition1: desiredFormattingState && !hasFullContentFormatting,
+            condition2: !desiredFormattingState && hasAnyContentFormatting
+          });
+        }
+        
         if (needsContentToggle) {
           // Continue to execCommand below
+          
+          // Special handling for mixed formatting - if we want to ADD formatting but there's mixed content,
+          // we need to handle this more carefully than just using execCommand
+          if (desiredFormattingState && hasAnyContentFormatting && !hasFullContentFormatting) {
+            console.log(`[DEBUG] Mixed formatting case: ${command}`);
+            // For mixed formatting, we need to:
+            // 1. Remove all existing formatting of this type
+            // 2. Apply formatting to the entire selection
+            
+            if (['bold', 'italic', 'underline'].includes(command)) {
+              // First, remove all existing formatting of this type
+              let attempts = 0;
+              while (document.queryCommandState(command) && attempts < 5) {
+                document.execCommand(command, false);
+                attempts++;
+              }
+              console.log(`[DEBUG] Removed existing ${command} formatting in ${attempts} attempts`);
+              
+              // Then apply formatting to ensure everything is formatted
+              const result = document.execCommand(command, false);
+              console.log(`[DEBUG] Applied ${command} formatting, result: ${result}`);
+              
+              // Update format states
+              updateFormatStates();
+              
+              // Trigger input event to ensure changes are saved
+              if (editorRef.current) {
+                const event = new Event('input', { bubbles: true });
+                editorRef.current.dispatchEvent(event);
+              }
+              return; // Skip the normal execCommand below
+            }
+          }
+          
+          // Debug for remove formatting case
+          if (!desiredFormattingState && hasFullContentFormatting) {
+            console.log(`[DEBUG] REMOVE case: Removing ${command} from fully formatted content`);
+          }
         } else {
           // Update states to reflect the current formatting
+          console.log(`[DEBUG] Skipping content command for ${command} - content already in desired state`);
           switch (command) {
             case 'bold':
               setIsBold(desiredFormattingState);
@@ -739,7 +868,9 @@ const EditorToolbar = ({
     }
 
     // Execute command for the content (this will handle both marker and content when entire item is selected)
+    console.log(`[DEBUG] Executing normal document.execCommand('${command}')`);
     const commandResult = document.execCommand(command, false, value);
+    console.log(`[DEBUG] Command result: ${commandResult}`);
     
     if (!commandResult) {
       // Debug: Check if the browser supports this command
