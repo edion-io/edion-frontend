@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatTab, ChatHistoryItem, UserSettings } from '../types';
 import { useToast } from './use-toast';
+import { showChatDeletedToast } from '../utils/toastUtils';
 
 export const useChat = (userSettings: UserSettings) => {
   const location = useLocation();
@@ -258,10 +259,24 @@ export const useChat = (userSettings: UserSettings) => {
       }
     }
 
-    toast({
-      title: "Chat deleted",
-      description: "The chat has been removed from your history",
-    });
+    // Create an undo function for chat deletion
+    const deletedTab = tabs.find(tab => tab.id === chatId);
+    const deletedHistoryItem = chatHistory.find(chat => chat.id === chatId);
+    
+    const undoDelete = () => {
+      if (deletedTab && deletedHistoryItem) {
+        // Restore the tab and history item
+        const restoredTabs = [...tabs, deletedTab];
+        const restoredHistory = [...chatHistory, deletedHistoryItem];
+        
+        setTabs(restoredTabs);
+        setChatHistory(restoredHistory);
+        localStorage.setItem('chatTabs', JSON.stringify(restoredTabs));
+        localStorage.setItem('chatHistory', JSON.stringify(restoredHistory));
+      }
+    };
+
+    showChatDeletedToast(undoDelete);
   }, [activeTabId, tabs, chatHistory, toast]);
 
   // Return values and functions
