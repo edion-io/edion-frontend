@@ -697,7 +697,12 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
                   Notifications
                 </TabsTrigger>
               </TabsList>
-
+              <TabsTrigger 
+                  value="Sounds" 
+                  className="rounded-md data-[state=active]:bg-indigo-50 dark:data-[state=active]:bg-blue-900/20"
+                >
+                  Sounds
+                </TabsTrigger>
               <TabsContent 
                 value="profile" 
                 className="space-y-4"

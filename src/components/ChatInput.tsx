@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Send, Mic, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import FileUploadMenu from './FileUploadMenu';
+import { Howl, Howler } from 'howler';//Import the howler library for sound effects.
 
 // Add our fun keyframes for the spin animation
 const spinKeyframes = `
@@ -35,6 +36,19 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
   const formRef = useRef<HTMLFormElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showExpandButton, setShowExpandButton] = useState(false);
+
+// We declare a sound we want to use with howler on our script, using the saved setting of sound volume
+  let soundVolume = 0.5; // Default value
+  const savedUserSettings = localStorage.getItem('userSettings');
+  if (savedUserSettings) {
+    soundVolume = JSON.parse(savedUserSettings).soundVolume;
+  }
+
+const sound = new Howl({// We declare a sound we want to use with howler on our script
+  src: ['/sounds/send_sound.mp3'],
+  volume: soundVolume, // Cambiar mas adelante por una variable para establecer el sonido desde configuracion
+  loop: false
+  });
 
   const INITIAL_HEIGHT = 120;
   const EXPANDED_HEIGHT = Math.round(window.innerHeight * 0.6);
@@ -129,6 +143,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
                   rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
+                       sound.play(); //Play sound when pressing "enter" button
                       e.preventDefault();
                       onSubmit(e);
                     }
@@ -181,3 +196,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
 ChatInput.displayName = 'ChatInput';
 
 export default ChatInput; 
+
+//Line 5 import Howler.
+//Line 40-45 we declare the send sound.
+//Line 139 sound.play();

@@ -1,4 +1,5 @@
 export interface UserSettings {
+  username: string;
   fullName: string;
   email: string;
   profilePicture: string;
