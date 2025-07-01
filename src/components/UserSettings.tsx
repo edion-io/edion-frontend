@@ -114,6 +114,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     toast({
       title: "Settings saved",
       description: "Your settings have been updated successfully",
+      variant: "success"
     });
     onClose();
   };
@@ -143,6 +144,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     toast({
       title: "Password updated",
       description: "Your password has been changed successfully",
+      variant: "success"
     });
     setShowPasswordChange(false);
     setCurrentPassword("");
@@ -168,6 +170,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       toast({
         title: "Verification code sent",
         description: `We've sent a verification code to ${newEmail}`,
+        variant: "success"
       });
     } else {
       // Verify the code
@@ -189,6 +192,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       toast({
         title: "Email updated",
         description: "Your email has been changed successfully",
+        variant: "success"
       });
     }
   };
@@ -214,6 +218,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       toast({
         title: "2FA Enabled",
         description: "Two-factor authentication has been enabled for your account",
+        variant: "success"
       });
     }
   };
@@ -223,6 +228,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     toast({
       title: "2FA Disabled",
       description: "Two-factor authentication has been disabled for your account",
+      variant: "success"
     });
   };
 

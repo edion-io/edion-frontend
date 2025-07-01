@@ -1,4 +1,3 @@
-
 import * as React from "react"
 import * as ToastPrimitives from "@radix-ui/react-toast"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -24,13 +23,13 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const toastVariants = cva(
-"w-full max-w-md p-4 min-h-[55px]",
+  "w-full max-w-xl min-h-[56px] px-6 py-4 rounded-xl shadow-lg backdrop-blur-md border transition-all duration-300 ease-out animate-slide-up-fade data-[state=closed]:animate-slide-down-fade",
   {
     variants: {
       variant: {
-        default: "bg-red-600 text-white border-red-700 rounded-xl shadow-lg",
-        destructive:
-        "bg-red-600 text-white border-red-700 rounded-xl shadow-lg",
+        default: "bg-white/85 dark:bg-gray-900/85 text-gray-900 dark:text-gray-100 border-gray-200/50 dark:border-gray-700/50",
+        destructive: "bg-red-50/90 dark:bg-red-950/90 text-red-900 dark:text-red-100 border-red-200/50 dark:border-red-800/50",
+        success: "bg-green-50/90 dark:bg-green-950/90 text-green-900 dark:text-green-100 border-green-200/50 dark:border-green-800/50",
       },
     },
     defaultVariants: {
@@ -76,7 +75,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
+      "absolute right-3 top-3 rounded-md p-1 text-gray-500/70 dark:text-gray-400/70 opacity-0 transition-opacity hover:text-gray-700 dark:hover:text-gray-200 focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-500/70 group-[.destructive]:hover:text-red-700 dark:group-[.destructive]:text-red-400/70 dark:group-[.destructive]:hover:text-red-200 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-50",
       className
     )}
     toast-close=""
@@ -105,7 +104,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn("text-sm opacity-90", className)}
+    className={cn("text-sm opacity-80", className)}
     {...props}
   />
 ))

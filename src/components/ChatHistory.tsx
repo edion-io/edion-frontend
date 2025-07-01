@@ -36,6 +36,7 @@ const ChatHistoryMenu: React.FC<ChatHistoryMenuProps> = ({ history, onSelectChat
         toast({
           title: "Chat deleted",
           description: "The chat has been removed from your history",
+          variant: "success"
         });
       }, 50);
     }

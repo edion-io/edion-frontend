@@ -67,6 +67,7 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
         toast({
           title: "File selected",
           description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
+          variant: "success"
         });
       }
     }
@@ -82,6 +83,7 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
     toast({
       title: "Google Drive",
       description: "Google Drive integration is coming soon",
+      variant: "default"
     });
   };
   
@@ -89,6 +91,7 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
     toast({
       title: "Microsoft OneDrive",
       description: "OneDrive integration is coming soon",
+      variant: "default"
     });
   };
   

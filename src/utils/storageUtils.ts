@@ -6,6 +6,7 @@ export const getUserSettingsFromStorage = (): UserSettings => {
     return JSON.parse(storedSettings);
   }
   return {
+    username: 'jsmith',
     fullName: 'Jane Smith',
     email: 'jane.smith@school.edu',
     profilePicture: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=256&q=80',
