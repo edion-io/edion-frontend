@@ -261,6 +261,37 @@
 [data-sonner-toast] {
   margin-left: auto !important;
   margin-right: 0 !important;
+  color: inherit !important;
+}
+
+/* Target all possible text containers in Sonner toasts */
+[data-sonner-toast] > div,
+[data-sonner-toast] [data-title],
+[data-sonner-toast] [data-description],
+[data-sonner-toast] [data-content],
+[data-sonner-toast] .sonner-toast-title,
+[data-sonner-toast] .sonner-toast-description {
+  opacity: 1 !important;
+  color: inherit !important;
+}
+
+/* More aggressive targeting for all text elements */
+[data-sonner-toast] * {
+  opacity: 1 !important;
+}
+
+/* Ensure the top/first toast is always fully visible */
+[data-sonner-toast]:first-child {
+  opacity: 1 !important;
+}
+
+/* Ensure text remains visible even when stacked */
+[data-sonner-toaster] [data-sonner-toast] {
+  opacity: 1 !important;
+}
+
+[data-sonner-toaster] [data-sonner-toast] * {
+  opacity: 1 !important;
 }
 
 /* Mobile responsive adjustments for toasts */

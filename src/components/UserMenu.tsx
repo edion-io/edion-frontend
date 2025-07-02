@@ -110,7 +110,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ userSettings, setUserSettings }) =>
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="p-2 hover:bg-white/40 dark:hover:bg-gray-900 rounded-lg text-gray-700 dark:text-gray-200 flex items-center justify-center theme-change-immediate focus:outline-none cursor-pointer"
-          >
+            >
             <SlidersHorizontal className="w-4 h-4 sm:w-5 sm:h-5 theme-change-immediate" />
           </motion.button>
         </DropdownMenuTrigger>

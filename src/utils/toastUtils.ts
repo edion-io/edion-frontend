@@ -26,7 +26,7 @@ export const showFileUploadToast = (fileName: string) => {
     description: `${fileName} has been added to the conversation.`,
     duration: 3000,
   });
-};
+}; 
 
 export const showFileSelectedToast = (fileName: string, fileSize: string) => {
   toast("File selected", {
