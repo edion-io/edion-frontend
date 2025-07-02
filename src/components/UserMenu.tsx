@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Settings, Moon, Sun } from 'lucide-react';
+import { Settings, Moon, Sun, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { UserSettings } from '../types';
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { updateUserSettings } from '../utils/storageUtils';
 import {
   DropdownMenu,
@@ -19,7 +18,7 @@ interface UserMenuProps {
 
 const UserMenu: React.FC<UserMenuProps> = ({ userSettings, setUserSettings }) => {
   const navigate = useNavigate();
-  const buttonRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const isChangingTheme = useRef(false);
@@ -106,23 +105,14 @@ const UserMenu: React.FC<UserMenuProps> = ({ userSettings, setUserSettings }) =>
     <div ref={dropdownRef}>
       <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger asChild>
-          <motion.div
+          <motion.button
             ref={buttonRef}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="theme-change-immediate focus:outline-none cursor-pointer"
+            className="p-2 hover:bg-white/40 dark:hover:bg-gray-900 rounded-lg text-gray-700 dark:text-gray-200 flex items-center justify-center theme-change-immediate focus:outline-none cursor-pointer"
           >
-            <Avatar 
-              className="h-10 w-10 cursor-pointer theme-change-immediate focus:ring-0 focus:ring-offset-0"
-            >
-              <AvatarImage 
-                src={userSettings.profilePicture} 
-                alt="User" 
-                className="theme-change-immediate object-cover"
-              />
-              <AvatarFallback className="theme-change-immediate">{userSettings.fullName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-            </Avatar>
-          </motion.div>
+            <SlidersHorizontal className="w-4 h-4 sm:w-5 sm:h-5 theme-change-immediate" />
+          </motion.button>
         </DropdownMenuTrigger>
         <DropdownMenuContent 
           align="end" 

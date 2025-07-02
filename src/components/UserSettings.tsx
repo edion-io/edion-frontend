@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Lock, Mail, Shield, Check, RefreshCw } from 'lucide-react';
-import ImageCropper from './ImageCropper';
 import { UserSettings as UserSettingsType } from '../types';
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,11 +28,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
   const [username, setUsername] = useState(settings.username);
   const [fullName, setFullName] = useState(settings.fullName);
   const [email, setEmail] = useState(settings.email);
-  const [profilePicture, setProfilePicture] = useState(settings.profilePicture);
   const [darkMode, setDarkMode] = useState(settings.darkMode);
-  const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
-  const [showCropper, setShowCropper] = useState(false);
-  const [croppedImage, setCroppedImage] = useState<string | null>(null);
 
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false);
@@ -58,12 +53,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
   // We'll use the original settings as a reference so we can revert if needed
   const originalDarkMode = settings.darkMode;
 
-  useEffect(() => {
-    if (croppedImage) {
-      setProfilePicture(croppedImage);
-      setShowCropper(false);
-    }
-  }, [croppedImage]);
+
 
   // Apply dark mode in real-time when the toggle changes
   useEffect(() => {
@@ -75,17 +65,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     }
   }, [darkMode, originalDarkMode]);
 
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setTempImageSrc(reader.result as string);
-        setShowCropper(true);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+
 
   const handleClose = () => {
     // Revert to original settings if user closes without saving
@@ -114,7 +94,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       username,
       fullName,
       email,
-      profilePicture,
+      profilePicture: '', // Keep empty since we don't use profile pictures
       darkMode,
     };
     onSave(newSettings);
@@ -214,34 +194,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
           <div className="space-y-6">
             <h2 className="text-xl font-semibold mb-4">Profile Settings</h2>
             <div className="space-y-6">
-              <div className="mb-4">
-                <label htmlFor="profilePicture" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
-                  Profile Picture
-                </label>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                  <div className="relative w-20 h-20 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800">
-                    <img src={profilePicture} alt="Profile" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-grow">
-                    <input
-                      type="file"
-                      id="profilePicture"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                    />
-                    <label 
-                      htmlFor="profilePicture" 
-                      className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors duration-150 cursor-pointer w-full sm:w-auto"
-                    >
-                      Change Profile Picture
-                    </label>
-                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                      Recommended: Square image, at least 400x400px
-                    </p>
-                  </div>
-                </div>
-              </div>
+
 
               <div className="mb-4">
                 <label htmlFor="username" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
@@ -706,15 +659,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
               </TabsContent>
             </Tabs>
 
-            {showCropper && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <ImageCropper
-                  src={tempImageSrc}
-                  onCrop={setCroppedImage}
-                  onCancel={() => setShowCropper(false)}
-                />
-              </div>
-            )}
+
 
             <div className="flex justify-end space-x-3 mt-6">
               <Button 
