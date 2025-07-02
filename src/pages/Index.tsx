@@ -5,21 +5,7 @@ import Search from '../components/Search';
 import ActionCards from '../components/ActionCards';
 import MainContainer from '../components/MainContainer';
 import { UserSettings } from '../types';
-
-// Get user settings from localStorage
-const getUserSettingsFromStorage = (): UserSettings => {
-  const storedSettings = localStorage.getItem('userSettings');
-  if (storedSettings) {
-    return JSON.parse(storedSettings);
-  }
-  return {
-    username: 'teacher_jane',
-    fullName: 'Jane Smith',
-    email: 'jane.smith@school.edu',
-    profilePicture: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=256&q=80',
-    darkMode: document.documentElement.classList.contains('dark'), // Get actual state from DOM
-  };
-};
+import { getUserSettingsFromStorage } from '../utils/storageUtils';
 
 const Index = () => {
   const [userSettings, setUserSettings] = useState<UserSettings>(getUserSettingsFromStorage());
