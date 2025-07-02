@@ -111,18 +111,7 @@ const Chat = () => {
     };
   }, [userSettings.darkMode]);
 
-  useEffect(() => {
-    const handleChatDeleted = (event: CustomEvent) => {
-      const { chatId } = event.detail;
-      handleDeleteChat(chatId);
-    };
-    
-    window.addEventListener('chatDeleted', handleChatDeleted as EventListener);
-    
-    return () => {
-      window.removeEventListener('chatDeleted', handleChatDeleted as EventListener);
-    };
-  }, [handleDeleteChat]);
+
 
   const handleEditMessage = (messageId: number, newText: string) => {
     if (messageId === -1) {

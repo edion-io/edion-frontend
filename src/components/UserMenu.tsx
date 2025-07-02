@@ -126,7 +126,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ userSettings, setUserSettings }) =>
         </DropdownMenuTrigger>
         <DropdownMenuContent 
           align="end" 
-          className="w-56 theme-change-immediate" 
+          className="w-56 theme-change-immediate z-[60]" 
           sideOffset={5}
         >
           <div 

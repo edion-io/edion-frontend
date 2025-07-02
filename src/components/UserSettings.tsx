@@ -6,7 +6,15 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { 
+  showSettingsSavedToast,
+  showPasswordUpdatedToast,
+  showEmailUpdatedToast,
+  showVerificationCodeSentToast,
+  show2FAEnabledToast,
+  show2FADisabledToast,
+  showErrorToast
+} from '../utils/toastUtils';
 
 interface UserSettingsProps {
   settings: UserSettingsType;
@@ -17,7 +25,6 @@ interface UserSettingsProps {
 type VerificationMethod = 'email' | 'sms' | 'authenticator';
 
 const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }) => {
-  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("profile");
   const [username, setUsername] = useState(settings.username);
   const [fullName, setFullName] = useState(settings.fullName);
@@ -111,41 +118,25 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       darkMode,
     };
     onSave(newSettings);
-    toast({
-      title: "Settings saved",
-      description: "Your settings have been updated successfully",
-      variant: "success"
-    });
+    showSettingsSavedToast();
     onClose();
   };
 
   const handleChangePassword = () => {
     // Validate passwords
     if (newPassword !== confirmPassword) {
-      toast({
-        title: "Error",
-        description: "New passwords don't match",
-        variant: "destructive"
-      });
+      showErrorToast("Error", "New passwords don't match");
       return;
     }
 
     if (newPassword.length < 8) {
-      toast({
-        title: "Error",
-        description: "Password must be at least 8 characters long",
-        variant: "destructive"
-      });
+      showErrorToast("Error", "Password must be at least 8 characters long");
       return;
     }
 
     // In a real app, you would send the passwords to your backend here
     // For this example, we'll just simulate success
-    toast({
-      title: "Password updated",
-      description: "Your password has been changed successfully",
-      variant: "success"
-    });
+    showPasswordUpdatedToast();
     setShowPasswordChange(false);
     setCurrentPassword("");
     setNewPassword("");
@@ -156,30 +147,18 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     if (!emailSent) {
       // Validate email
       if (!newEmail.includes('@') || !newEmail.includes('.')) {
-        toast({
-          title: "Error",
-          description: "Please enter a valid email address",
-          variant: "destructive"
-        });
+        showErrorToast("Error", "Please enter a valid email address");
         return;
       }
 
       // In a real app, you would send the verification code to the new email
       // For this example, we'll just simulate success
       setEmailSent(true);
-      toast({
-        title: "Verification code sent",
-        description: `We've sent a verification code to ${newEmail}`,
-        variant: "success"
-      });
+      showVerificationCodeSentToast(newEmail);
     } else {
       // Verify the code
       if (verificationCode !== "123456") { // Demo code
-        toast({
-          title: "Error",
-          description: "Invalid verification code. For this demo, use 123456",
-          variant: "destructive"
-        });
+        showErrorToast("Error", "Invalid verification code. For this demo, use 123456");
         return;
       }
 
@@ -189,11 +168,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       setEmailPassword("");
       setVerificationCode("");
       setEmailSent(false);
-      toast({
-        title: "Email updated",
-        description: "Your email has been changed successfully",
-        variant: "success"
-      });
+      showEmailUpdatedToast();
     }
   };
 
@@ -203,11 +178,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     } else if (setupStep === 2) {
       // Verify the code
       if (twoFactorCode !== "123456") { // Demo code
-        toast({
-          title: "Error",
-          description: "Invalid verification code. For this demo, use 123456",
-          variant: "destructive"
-        });
+        showErrorToast("Error", "Invalid verification code. For this demo, use 123456");
         return;
       }
       
@@ -215,21 +186,13 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       setShowQRCode(false);
       setSetupStep(1);
       setTwoFactorCode("");
-      toast({
-        title: "2FA Enabled",
-        description: "Two-factor authentication has been enabled for your account",
-        variant: "success"
-      });
+      show2FAEnabledToast();
     }
   };
 
   const handleDisableTwoFactor = () => {
     setTwoFactorEnabled(false);
-    toast({
-      title: "2FA Disabled",
-      description: "Two-factor authentication has been disabled for your account",
-      variant: "success"
-    });
+    show2FADisabledToast();
   };
 
   const handleTabClick = (e: React.MouseEvent) => {

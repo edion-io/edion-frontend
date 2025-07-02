@@ -15,7 +15,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
+import { 
+  showFileSelectedToast, 
+  showFileTooLargeToast, 
+  showGoogleDriveToast, 
+  showOneDriveToast 
+} from '../utils/toastUtils';
 
 interface FileUploadMenuProps {
   onFileSelect?: (file: File) => void;
@@ -44,7 +49,6 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
   maxSize = 10 * 1024 * 1024, // 10MB default
   multiple = false,
 }) => {
-  const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,11 +56,10 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
     if (files.length > 0) {
       for (const file of files) {
         if (file.size > maxSize) {
-          toast({
-            title: "File too large",
-            description: `${file.name} exceeds the ${(maxSize / 1024 / 1024).toFixed(0)}MB limit`,
-            variant: "destructive"
-          });
+          showFileTooLargeToast(
+            file.name, 
+            `${(maxSize / 1024 / 1024).toFixed(0)}MB`
+          );
           continue;
         }
         
@@ -64,11 +67,10 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
           onFileSelect(file);
         }
         
-        toast({
-          title: "File selected",
-          description: `${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
-          variant: "success"
-        });
+        showFileSelectedToast(
+          file.name, 
+          `${(file.size / 1024).toFixed(1)} KB`
+        );
       }
     }
     // Reset file input
@@ -80,19 +82,11 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
   };
   
   const handleGoogleDrive = () => {
-    toast({
-      title: "Google Drive",
-      description: "Google Drive integration is coming soon",
-      variant: "default"
-    });
+    showGoogleDriveToast();
   };
   
   const handleOneDrive = () => {
-    toast({
-      title: "Microsoft OneDrive",
-      description: "OneDrive integration is coming soon",
-      variant: "default"
-    });
+    showOneDriveToast();
   };
   
   return (
@@ -131,7 +125,7 @@ const FileUploadMenu: React.FC<FileUploadMenuProps> = ({
           side={position} 
           align={align} 
           sideOffset={sideOffset}
-          className="w-56 p-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200 dark:border-gray-800 shadow-xl rounded-xl"
+          className="w-56 p-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200 dark:border-gray-800 shadow-xl rounded-xl z-[60]"
           role="menu"
           aria-label="File upload options"
         >

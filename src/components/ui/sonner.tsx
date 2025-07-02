@@ -9,7 +9,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
-      className="toaster group !fixed sm:!right-4"
+      className="toaster group !fixed sm:!right-4 !z-40"
       position="top-right"
       offset="0"
       style={{
@@ -19,7 +19,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:bg-white/95 group-[.toaster]:dark:bg-gray-900/95 group-[.toaster]:text-gray-900 group-[.toaster]:dark:text-gray-100 group-[.toaster]:border group-[.toaster]:border-gray-200/50 group-[.toaster]:dark:border-gray-700/50 group-[.toaster]:shadow-xl group-[.toaster]:backdrop-blur-xl group-[.toaster]:rounded-xl group-[.toaster]:min-h-[60px] group-[.toaster]:w-64 group-[.toaster]:sm:w-80 group-[.toaster]:max-w-none",
+            "group toast group-[.toaster]:bg-white/95 group-[.toaster]:dark:bg-gray-900/95 group-[.toaster]:text-gray-900 group-[.toaster]:dark:text-gray-100 group-[.toaster]:border group-[.toaster]:border-gray-200/50 group-[.toaster]:dark:border-gray-700/50 group-[.toaster]:shadow-xl group-[.toaster]:backdrop-blur-xl group-[.toaster]:rounded-xl group-[.toaster]:min-h-[60px] group-[.toaster]:w-64 group-[.toaster]:sm:w-80 group-[.toaster]:max-w-none group-[.toaster]:z-40",
           description: "group-[.toast]:text-gray-600 group-[.toast]:dark:text-gray-400 group-[.toast]:text-sm",
           actionButton:
             "group-[.toast]:bg-indigo-500 group-[.toast]:dark:bg-blue-600 group-[.toast]:text-white group-[.toast]:hover:bg-indigo-600 group-[.toast]:dark:hover:bg-blue-700 group-[.toast]:rounded-lg group-[.toast]:px-3 group-[.toast]:py-1.5 group-[.toast]:text-sm group-[.toast]:font-medium",

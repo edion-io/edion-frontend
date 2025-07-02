@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Search, FileText, Dumbbell, GraduationCap, School, Trash2 } from 'lucide-react';
 import { ChatHistoryItem } from '../types';
-import { showChatDeletedToast } from '../utils/toastUtils';
 import { motion } from 'framer-motion';
 
 interface ChatHistoryMenuProps {
@@ -21,18 +20,10 @@ const ChatHistoryMenu: React.FC<ChatHistoryMenuProps> = ({ history, onSelectChat
     setDeletingChatId(chatId);
     
     if (onDeleteChat) {
-      // Dispatch a custom event so that other components can react to it
-      const event = new CustomEvent('chatDeleted', { 
-        detail: { chatId } 
-      });
-      window.dispatchEvent(event);
-      
       // Small delay to prevent accidental double-clicks
       setTimeout(() => {
         onDeleteChat(chatId);
         setDeletingChatId(null);
-        
-        showChatDeletedToast();
       }, 50);
     }
   };

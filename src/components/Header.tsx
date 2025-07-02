@@ -65,7 +65,7 @@ const Header: React.FC<HeaderProps> = ({ userSettings: propUserSettings, setUser
       localStorage.setItem('chatTabs', JSON.stringify(updatedTabs));
     }
 
-    window.dispatchEvent(new CustomEvent('chatDeleted', { detail: { chatId } }));
+
   };
 
   const toggleHistory = () => {
