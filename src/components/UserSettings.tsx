@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Lock, Mail, Shield, Check, RefreshCw } from 'lucide-react';
-import ImageCropper from './ImageCropper';
 import { UserSettings as UserSettingsType } from '../types';
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { 
+  showSettingsSavedToast,
+  showPasswordUpdatedToast,
+  showEmailUpdatedToast,
+  showVerificationCodeSentToast,
+  show2FAEnabledToast,
+  show2FADisabledToast,
+  showErrorToast
+} from '../utils/toastUtils';
 
 interface UserSettingsProps {
   settings: UserSettingsType;
@@ -17,16 +24,11 @@ interface UserSettingsProps {
 type VerificationMethod = 'email' | 'sms' | 'authenticator';
 
 const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }) => {
-  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("profile");
   const [username, setUsername] = useState(settings.username);
   const [fullName, setFullName] = useState(settings.fullName);
   const [email, setEmail] = useState(settings.email);
-  const [profilePicture, setProfilePicture] = useState(settings.profilePicture);
   const [darkMode, setDarkMode] = useState(settings.darkMode);
-  const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
-  const [showCropper, setShowCropper] = useState(false);
-  const [croppedImage, setCroppedImage] = useState<string | null>(null);
 
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false);
@@ -51,12 +53,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
   // We'll use the original settings as a reference so we can revert if needed
   const originalDarkMode = settings.darkMode;
 
-  useEffect(() => {
-    if (croppedImage) {
-      setProfilePicture(croppedImage);
-      setShowCropper(false);
-    }
-  }, [croppedImage]);
+
 
   // Apply dark mode in real-time when the toggle changes
   useEffect(() => {
@@ -68,17 +65,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     }
   }, [darkMode, originalDarkMode]);
 
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setTempImageSrc(reader.result as string);
-        setShowCropper(true);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+
 
   const handleClose = () => {
     // Revert to original settings if user closes without saving
@@ -107,43 +94,29 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       username,
       fullName,
       email,
-      profilePicture,
+      profilePicture: '', // Keep empty since we don't use profile pictures
       darkMode,
     };
     onSave(newSettings);
-    toast({
-      title: "Settings saved",
-      description: "Your settings have been updated successfully",
-    });
+    showSettingsSavedToast();
     onClose();
   };
 
   const handleChangePassword = () => {
     // Validate passwords
     if (newPassword !== confirmPassword) {
-      toast({
-        title: "Error",
-        description: "New passwords don't match",
-        variant: "destructive"
-      });
+      showErrorToast("Error", "New passwords don't match");
       return;
     }
 
     if (newPassword.length < 8) {
-      toast({
-        title: "Error",
-        description: "Password must be at least 8 characters long",
-        variant: "destructive"
-      });
+      showErrorToast("Error", "Password must be at least 8 characters long");
       return;
     }
 
     // In a real app, you would send the passwords to your backend here
     // For this example, we'll just simulate success
-    toast({
-      title: "Password updated",
-      description: "Your password has been changed successfully",
-    });
+    showPasswordUpdatedToast();
     setShowPasswordChange(false);
     setCurrentPassword("");
     setNewPassword("");
@@ -154,29 +127,18 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     if (!emailSent) {
       // Validate email
       if (!newEmail.includes('@') || !newEmail.includes('.')) {
-        toast({
-          title: "Error",
-          description: "Please enter a valid email address",
-          variant: "destructive"
-        });
+        showErrorToast("Error", "Please enter a valid email address");
         return;
       }
 
       // In a real app, you would send the verification code to the new email
       // For this example, we'll just simulate success
       setEmailSent(true);
-      toast({
-        title: "Verification code sent",
-        description: `We've sent a verification code to ${newEmail}`,
-      });
+      showVerificationCodeSentToast(newEmail);
     } else {
       // Verify the code
       if (verificationCode !== "123456") { // Demo code
-        toast({
-          title: "Error",
-          description: "Invalid verification code. For this demo, use 123456",
-          variant: "destructive"
-        });
+        showErrorToast("Error", "Invalid verification code. For this demo, use 123456");
         return;
       }
 
@@ -186,10 +148,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       setEmailPassword("");
       setVerificationCode("");
       setEmailSent(false);
-      toast({
-        title: "Email updated",
-        description: "Your email has been changed successfully",
-      });
+      showEmailUpdatedToast();
     }
   };
 
@@ -199,11 +158,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     } else if (setupStep === 2) {
       // Verify the code
       if (twoFactorCode !== "123456") { // Demo code
-        toast({
-          title: "Error",
-          description: "Invalid verification code. For this demo, use 123456",
-          variant: "destructive"
-        });
+        showErrorToast("Error", "Invalid verification code. For this demo, use 123456");
         return;
       }
       
@@ -211,19 +166,13 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
       setShowQRCode(false);
       setSetupStep(1);
       setTwoFactorCode("");
-      toast({
-        title: "2FA Enabled",
-        description: "Two-factor authentication has been enabled for your account",
-      });
+      show2FAEnabledToast();
     }
   };
 
   const handleDisableTwoFactor = () => {
     setTwoFactorEnabled(false);
-    toast({
-      title: "2FA Disabled",
-      description: "Two-factor authentication has been disabled for your account",
-    });
+    show2FADisabledToast();
   };
 
   const handleTabClick = (e: React.MouseEvent) => {
@@ -245,34 +194,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
           <div className="space-y-6">
             <h2 className="text-xl font-semibold mb-4">Profile Settings</h2>
             <div className="space-y-6">
-              <div className="mb-4">
-                <label htmlFor="profilePicture" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
-                  Profile Picture
-                </label>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                  <div className="relative w-20 h-20 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800">
-                    <img src={profilePicture} alt="Profile" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-grow">
-                    <input
-                      type="file"
-                      id="profilePicture"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                    />
-                    <label 
-                      htmlFor="profilePicture" 
-                      className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors duration-150 cursor-pointer w-full sm:w-auto"
-                    >
-                      Change Profile Picture
-                    </label>
-                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                      Recommended: Square image, at least 400x400px
-                    </p>
-                  </div>
-                </div>
-              </div>
+
 
               <div className="mb-4">
                 <label htmlFor="username" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
@@ -737,15 +659,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
               </TabsContent>
             </Tabs>
 
-            {showCropper && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <ImageCropper
-                  src={tempImageSrc}
-                  onCrop={setCroppedImage}
-                  onCancel={() => setShowCropper(false)}
-                />
-              </div>
-            )}
+
 
             <div className="flex justify-end space-x-3 mt-6">
               <Button 

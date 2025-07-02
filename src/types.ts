@@ -1,4 +1,5 @@
 export interface UserSettings {
+  username: string;
   fullName: string;
   email: string;
   profilePicture: string;
@@ -57,6 +58,12 @@ export interface ChatTab {
 
 // TypeScript alias to enable backwards compatibility with existing code
 export type ChatHistory = ChatHistoryItem;
+
+export interface Block {
+  id: string;
+  type: string;
+  content: string;
+}
 
 export interface Exercise {
   id: string;

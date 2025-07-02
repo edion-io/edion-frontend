@@ -6,21 +6,7 @@ import ChatHeader from '../components/ChatHeader';
 import ChatMessages from '../components/ChatMessages';
 import ChatInput from '../components/ChatInput';
 import { useChat } from '../hooks/use-chat';
-import { updateUserSettings } from '../utils/storageUtils';
-
-const getUserSettingsFromStorage = (): UserSettingsType => {
-  const storedSettings = localStorage.getItem('userSettings');
-  if (storedSettings) {
-    return JSON.parse(storedSettings);
-  }
-  return {
-    username: 'teacher_jane',
-    fullName: 'Jane Smith',
-    email: 'jane.smith@school.edu',
-    profilePicture: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=256&q=80',
-    darkMode: false,
-  };
-};
+import { updateUserSettings, getUserSettingsFromStorage } from '../utils/storageUtils';
 
 const Chat = () => {
   const [userSettings, setUserSettings] = useState<UserSettingsType>(getUserSettingsFromStorage());
@@ -111,18 +97,7 @@ const Chat = () => {
     };
   }, [userSettings.darkMode]);
 
-  useEffect(() => {
-    const handleChatDeleted = (event: CustomEvent) => {
-      const { chatId } = event.detail;
-      handleDeleteChat(chatId);
-    };
-    
-    window.addEventListener('chatDeleted', handleChatDeleted as EventListener);
-    
-    return () => {
-      window.removeEventListener('chatDeleted', handleChatDeleted as EventListener);
-    };
-  }, [handleDeleteChat]);
+
 
   const handleEditMessage = (messageId: number, newText: string) => {
     if (messageId === -1) {

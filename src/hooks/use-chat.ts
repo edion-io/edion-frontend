@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatTab, ChatHistoryItem, UserSettings } from '../types';
-import { useToast } from './use-toast';
+import { showChatDeletedToast, showErrorToast } from '../utils/toastUtils';
 
 export const useChat = (userSettings: UserSettings) => {
   const location = useLocation();
   const navigate = useNavigate();
   const initialState = location.state || {};
-  const { toast } = useToast();
   
   const [showHistory, setShowHistory] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
@@ -81,11 +80,10 @@ export const useChat = (userSettings: UserSettings) => {
         localStorage.setItem('chatTabs', JSON.stringify(loadedTabs));
         
         // Display error notification
-        toast({
-          title: "Chat not found",
-          description: "The requested chat could not be found. A new chat has been created.",
-          variant: "destructive"
-        });
+        showErrorToast(
+          "Chat not found", 
+          "The requested chat could not be found. A new chat has been created."
+        );
       }
     } else if (loadedTabs.length > 0) {
       setTabs(loadedTabs);
@@ -105,7 +103,7 @@ export const useChat = (userSettings: UserSettings) => {
     }
     
     setIsLoading(false);
-  }, [initialState.selectedChatId, initialState.initialQuery, toast]);
+  }, [initialState.selectedChatId, initialState.initialQuery]);
 
   // Handle form submission
   const handleSubmit = useCallback((e: React.FormEvent) => {
@@ -258,11 +256,28 @@ export const useChat = (userSettings: UserSettings) => {
       }
     }
 
-    toast({
-      title: "Chat deleted",
-      description: "The chat has been removed from your history",
-    });
-  }, [activeTabId, tabs, chatHistory, toast]);
+    // Create an undo function for chat deletion
+    const deletedTab = tabs.find(tab => tab.id === chatId);
+    const deletedHistoryItem = chatHistory.find(chat => chat.id === chatId);
+    
+    const undoDelete = () => {
+      if (deletedTab && deletedHistoryItem) {
+        // Restore the tab and history item
+        setTabs(prevTabs => [...prevTabs, deletedTab]);
+        setChatHistory(prevHistory => [...prevHistory, deletedHistoryItem]);
+
+        // Update localStorage with the latest state
+        setTimeout(() => {
+          const currentTabs = JSON.parse(localStorage.getItem('chatTabs') || '[]');
+          const currentHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+          localStorage.setItem('chatTabs', JSON.stringify([...currentTabs, deletedTab]));
+          localStorage.setItem('chatHistory', JSON.stringify([...currentHistory, deletedHistoryItem]));
+        }, 0);
+      }
+    };
+
+    showChatDeletedToast(undoDelete);
+  }, [activeTabId, tabs, chatHistory]);
 
   // Return values and functions
   return useMemo(() => ({
