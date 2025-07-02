@@ -263,13 +263,16 @@ export const useChat = (userSettings: UserSettings) => {
     const undoDelete = () => {
       if (deletedTab && deletedHistoryItem) {
         // Restore the tab and history item
-        const restoredTabs = [...tabs, deletedTab];
-        const restoredHistory = [...chatHistory, deletedHistoryItem];
-        
-        setTabs(restoredTabs);
-        setChatHistory(restoredHistory);
-        localStorage.setItem('chatTabs', JSON.stringify(restoredTabs));
-        localStorage.setItem('chatHistory', JSON.stringify(restoredHistory));
+        setTabs(prevTabs => [...prevTabs, deletedTab]);
+        setChatHistory(prevHistory => [...prevHistory, deletedHistoryItem]);
+
+        // Update localStorage with the latest state
+        setTimeout(() => {
+          const currentTabs = JSON.parse(localStorage.getItem('chatTabs') || '[]');
+          const currentHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+          localStorage.setItem('chatTabs', JSON.stringify([...currentTabs, deletedTab]));
+          localStorage.setItem('chatHistory', JSON.stringify([...currentHistory, deletedHistoryItem]));
+        }, 0);
       }
     };
 

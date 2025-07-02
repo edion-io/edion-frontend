@@ -250,3 +250,31 @@
   animation: tabGlow 3s ease-in-out infinite;
 }
 
+/* Force toast positioning to stay on the right side on all screen sizes */
+[data-sonner-toaster] {
+  right: 8px !important;
+  left: auto !important;
+  transform: none !important;
+}
+
+/* Ensure individual toasts are right-aligned within the container */
+[data-sonner-toast] {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+}
+
+/* Mobile responsive adjustments for toasts */
+@media (max-width: 640px) {
+  [data-sonner-toaster] {
+    right: 8px !important;
+    left: auto !important;
+    width: calc(100vw - 16px) !important;
+    max-width: 320px !important;
+  }
+  
+  [data-sonner-toast] {
+    width: 100% !important;
+    max-width: 320px !important;
+  }
+}
+
