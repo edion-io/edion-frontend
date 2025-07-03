@@ -1862,9 +1862,12 @@ const styles = `
 }
 
 .rich-text-editor [style*="background-color:"] {
-  padding: 0 2px;
+  /* Remove extra horizontal padding to avoid visual gaps when highlighting partial words */
+  padding: 0;
   border-radius: 2px;
   transition: background-color 0.2s ease;
+  /* Ensure highlight wraps nicely across line breaks */
+  box-decoration-break: clone;
 }
 
 /* Selection styles */
