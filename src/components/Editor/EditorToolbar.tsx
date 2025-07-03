@@ -894,6 +894,8 @@ const EditorToolbar = ({
         break;
       case 'foreColor':
         updateTextColor(value || '#000000');
+        // NEW: ensure underline color follows text color
+        synchronizeUnderlineColor(value || '#000000');
         break;
       case 'hiliteColor':
         updateHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
@@ -2212,6 +2214,53 @@ const EditorToolbar = ({
     // Only prevent default to avoid losing selection
     // Don't force focus back to editor
     e.preventDefault();
+  };
+  
+  // Helper to ensure underline color matches text color for selection
+  const synchronizeUnderlineColor = (color: string) => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const editorEl = editorRef.current;
+    if (!editorEl) return;
+
+    // Apply to ancestor <u> elements (outside-in)
+    let ancestor: Node | null = range.commonAncestorContainer;
+    while (ancestor && ancestor !== editorEl) {
+      if (ancestor.nodeType === Node.ELEMENT_NODE && (ancestor as HTMLElement).tagName === 'U') {
+        const uEl = ancestor as HTMLElement;
+        uEl.style.color = color;
+        (uEl.style as any).textDecorationColor = color;
+      }
+      ancestor = ancestor.parentNode;
+    }
+
+    // Apply to any <u> or elements with underline inside the selection
+    const walker = document.createTreeWalker(
+      range.commonAncestorContainer,
+      NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode: (node) => {
+          if (!(node instanceof HTMLElement)) return NodeFilter.FILTER_SKIP;
+          const el = node as HTMLElement;
+          if (el.tagName === 'U') return NodeFilter.FILTER_ACCEPT;
+          const dec = el.style.textDecoration || '';
+          if (dec.includes('underline')) return NodeFilter.FILTER_ACCEPT;
+          return NodeFilter.FILTER_SKIP;
+        }
+      }
+    );
+
+    let current: Node | null = walker.currentNode;
+    while (current) {
+      if (range.intersectsNode(current)) {
+        const el = current as HTMLElement;
+        el.style.color = color;
+        (el.style as any).textDecorationColor = color;
+      }
+      current = walker.nextNode();
+    }
   };
   
   return (
