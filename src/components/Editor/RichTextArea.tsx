@@ -150,6 +150,218 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
     // First call the inline math handler
     handleInlineMathKeyDown(e);
 
+    // Handle arrow key navigation for math blocks
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      const target = e.target as HTMLElement;
+      
+      // Special handler for moving left from a ZWS into a math field
+      if (e.key === 'ArrowLeft' &&
+          range.startContainer.nodeType === Node.TEXT_NODE &&
+          range.startContainer.textContent === '\u200B')
+      {
+          const potentialMathField = range.startContainer.previousSibling;
+          if (potentialMathField && potentialMathField instanceof HTMLElement && potentialMathField.classList.contains('math-field')) {
+              e.preventDefault();
+              const mathFieldElement = potentialMathField as any;
+              mathFieldElement.focus();
+              mathFieldElement.executeCommand(['moveTo', 'end']); // Move caret to the end
+              // Clean up the now-unnecessary zero-width space
+              range.startContainer.parentNode?.removeChild(range.startContainer);
+              return;
+          }
+      }
+      
+      // Check if we're next to a math field
+      let mathField: HTMLElement | null = null;
+      
+      if (e.key === 'ArrowRight') {
+        // Check if we're just before a math field
+        let nextNode: Node | null = null;
+        
+        // If we're at the end of a text node, look for next sibling
+        if (range.startOffset === (range.startContainer.textContent?.length || 0)) {
+          nextNode = range.startContainer.nextSibling;
+        }
+        // If we're at an element boundary, check the next node at that position
+        else if (range.startContainer.nodeType === Node.ELEMENT_NODE) {
+          nextNode = (range.startContainer as Element).childNodes[range.startOffset];
+        }
+        
+        // If we haven't found a next node yet, try parent's next sibling
+        if (!nextNode && range.startContainer.parentNode) {
+          nextNode = range.startContainer.parentNode.nextSibling;
+        }
+        
+        // Check if the next node is a math field
+        if (nextNode && nextNode instanceof HTMLElement && nextNode.classList.contains('math-field')) {
+          mathField = nextNode;
+        }
+      } else if (e.key === 'ArrowLeft') {
+        // Check if we're just after a math field
+        let prevNode: Node | null = null;
+        
+        // If we're at the start of a text node, look for previous sibling
+        if (range.startOffset === 0) {
+          prevNode = range.startContainer.previousSibling;
+        }
+        // If we're at an element boundary, check the previous node at that position
+        else if (range.startContainer.nodeType === Node.ELEMENT_NODE) {
+          prevNode = (range.startContainer as Element).childNodes[range.startOffset - 1];
+        }
+        
+        // If we haven't found a previous node yet, try parent's previous sibling
+        if (!prevNode && range.startContainer.parentNode) {
+          prevNode = range.startContainer.parentNode.previousSibling;
+        }
+        
+        // Check if the previous node is a math field
+        if (prevNode && prevNode instanceof HTMLElement && prevNode.classList.contains('math-field')) {
+          mathField = prevNode;
+        }
+      }
+      
+      // If we found a math field and we're at the edge of the current text node
+      if (mathField) {
+        const isAtStart = range.startOffset === 0;
+        const isAtEnd = range.startOffset === (range.startContainer.textContent?.length || 0);
+        
+        // For right movement, also check if we're at an element boundary
+        const isAtElementBoundary = range.startContainer.nodeType === Node.ELEMENT_NODE && 
+                                  (e.key === 'ArrowRight' ? 
+                                    range.startOffset === range.startContainer.childNodes.length :
+                                    range.startOffset === 0);
+        
+        const inZeroWidthNodeForLeft = e.key === 'ArrowLeft' && 
+                                     range.startContainer.nodeType === Node.TEXT_NODE &&
+                                     range.startContainer.textContent === '\u200B';
+
+        if ((e.key === 'ArrowRight' && (isAtEnd || isAtElementBoundary)) || 
+            (e.key === 'ArrowLeft' && (isAtStart || isAtElementBoundary || inZeroWidthNodeForLeft))) {
+          e.preventDefault();
+          
+          // Focus the math field - MathLive will automatically position the cursor
+          // at the start when moving right, and at the end when moving left
+          (mathField as any).focus();
+          return;
+        }
+      }
+      
+      // Handle cursor movement from within math field
+      if (target.classList.contains('math-field')) {
+        const mathField = target as any;
+        const position = mathField.position;
+        const lastPosition = mathField.value?.length || 0;
+        
+        if ((e.key === 'ArrowRight' && position >= lastPosition) || 
+            (e.key === 'ArrowLeft' && position <= 0)) {
+          e.preventDefault();
+          
+          // Find the adjacent text node
+          const adjacentNode = e.key === 'ArrowRight' ? target.nextSibling : target.previousSibling;
+          
+          if (adjacentNode) {
+            // Create a new range at the appropriate position
+            const newRange = document.createRange();
+            if (adjacentNode.nodeType === Node.TEXT_NODE) {
+              // If it's a text node, move to its edge
+              if (e.key === 'ArrowRight') {
+                // Skip zero-width spaces at the start
+                let offset = 0;
+                while (offset < adjacentNode.textContent!.length && 
+                       adjacentNode.textContent!.charAt(offset) === '\u200B') {
+                  offset++;
+                }
+                newRange.setStart(adjacentNode, offset);
+              } else {
+                // Skip zero-width spaces at the end
+                let offset = adjacentNode.textContent!.length;
+                while (offset > 0 && 
+                       adjacentNode.textContent!.charAt(offset - 1) === '\u200B') {
+                  offset--;
+                }
+                newRange.setStart(adjacentNode, offset);
+              }
+            } else {
+              // For other nodes, just move to their edge
+              newRange.setStart(adjacentNode, e.key === 'ArrowRight' ? 0 : 0);
+            }
+            newRange.collapse(true);
+            
+            // Apply the new selection
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          } else {
+            // Create a new text node if needed, but with actual space instead of zero-width
+            const textNode = document.createTextNode(' ');
+            if (e.key === 'ArrowRight') {
+              target.parentNode?.insertBefore(textNode, target.nextSibling);
+            } else {
+              target.parentNode?.insertBefore(textNode, target);
+            }
+            
+            // Position cursor in the new text node
+            const newRange = document.createRange();
+            newRange.setStart(textNode, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          }
+        }
+      }
+    }
+
+    // Handle backspace for math blocks
+    if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        
+        // Check if we're at the start of a text node right after a math-field
+        if (range.collapsed) {
+          let node = range.startContainer;
+          let offset = range.startOffset;
+          let mathNode: Node | null = null;
+          
+          // If we're in a text node
+          if (node.nodeType === Node.TEXT_NODE) {
+            // If we're at the beginning of a text node or it only contains whitespace
+            if (offset === 0 || (node.textContent || '').trim() === '') {
+              mathNode = node.previousSibling;
+              // If this text node is empty/whitespace, mark it for removal
+              if ((node.textContent || '').trim() === '') {
+                node.parentNode?.removeChild(node);
+              }
+            }
+          } else if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+            // If we're in an element node, get the child before the current position
+            mathNode = (node as HTMLElement).childNodes[offset - 1];
+            
+            // Check for and remove any empty text nodes after the math field
+            const nextNode = mathNode?.nextSibling;
+            if (nextNode && nextNode.nodeType === Node.TEXT_NODE && 
+                (nextNode.textContent || '').trim() === '') {
+              nextNode.parentNode?.removeChild(nextNode);
+            }
+          }
+          
+          // Check if we found a math-field
+          if (mathNode && mathNode.nodeType === Node.ELEMENT_NODE && 
+              (mathNode as HTMLElement).classList.contains('math-field')) {
+            e.preventDefault();
+            mathNode.parentNode?.removeChild(mathNode);
+            if (editorRef.current) {
+              onChange(editorRef.current.innerHTML);
+            }
+            return;
+          }
+        }
+      }
+    }
+
     // Handle keyboard shortcuts
     if (e.ctrlKey || e.metaKey) {
       switch (e.key.toLowerCase()) {
