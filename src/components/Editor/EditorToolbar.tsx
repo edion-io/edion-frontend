@@ -2193,16 +2193,18 @@ const EditorToolbar = ({
       return;
     }
 
-    // Not in a list, create a new one - don't use selection preservation to allow proper cursor positioning
-    const alignmentContext = detectAlignmentContext();
-    createNewListFromText(listType, alignmentContext, false); // Call callback for proper cursor positioning
+      // Not in a list, create a new one - use selection preservation to maintain text selection
+  const alignmentContext = detectAlignmentContext();
+  preserveSelectionDuringListOperation(editorRef.current, () => {
+    createNewListFromText(listType, alignmentContext, true); // Skip callback to avoid cursor positioning that interferes with selection restoration
+  });
 
-    // Update format states and trigger content change event
-    updateFormatStates();
-    if (editorRef.current) {
-      const event = new Event('input', { bubbles: true });
-      editorRef.current.dispatchEvent(event);
-    }
+  // Update format states and trigger content change event
+  updateFormatStates();
+  if (editorRef.current) {
+    const event = new Event('input', { bubbles: true });
+    editorRef.current.dispatchEvent(event);
+  }
   };
   
   // Update handleToolbarClick to only prevent default but not force focus
