@@ -1827,16 +1827,37 @@ const styles = `
   background-color: #1e293b;
 }
 
-/* Math fields */
+/* Math fields - force vertical centering with maximum specificity */
 .rich-text-editor math-field {
   /* Smooth style transitions */
-  transition: all 0.2s ease-in-out;
-  /* Keep math content inline with surrounding text */
-  display: inline-block;
-  vertical-align: middle;
-  font-size: 1em;
-  line-height: 0; /* ensures the element itself doesn't contribute extra line height */
-  margin: 0 0.1em; /* small spacing like normal characters */
+  transition: all 0.2s ease-in-out !important;
+  /* Use flexbox to center content */
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  /* Align with text baseline, not middle (middle affects surrounding text) */
+  vertical-align: baseline !important;
+  font-size: 1em !important;
+  line-height: 1.2 !important;
+  margin: 0 0.1em !important; /* small spacing like normal characters */
+  min-height: 1.2em !important;
+  /* Force positioning for internal centering */
+  position: relative !important;
+}
+
+/* Target all possible MathLive internal elements with maximum specificity */
+.rich-text-editor math-field *,
+.rich-text-editor math-field > *,
+.rich-text-editor math-field [class*="mml"],
+.rich-text-editor math-field [class*="ML"],
+.rich-text-editor math-field [class*="katex"],
+.rich-text-editor math-field div,
+.rich-text-editor math-field span {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  line-height: 1.2 !important;
 }
 
 /* Add CSS transitions for padding-left on block elements */
