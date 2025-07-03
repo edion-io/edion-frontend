@@ -664,9 +664,19 @@ const EditorToolbar = ({
         }
         
         // Determine desired state:
-        // - If marker is formatted AND all content is fully formatted → remove formatting
-        // - Otherwise → add formatting to both marker and content
+        // Default rule:
+        //   If marker is formatted AND all content fully formatted ⇒ remove formatting
+        //   else ⇒ add formatting
         desiredFormattingState = !(hasMarkerFormatting && hasFullContentFormatting);
+        
+        // Special rule: cursor at beginning WITHOUT any selection (range.collapsed)
+        // means user is explicitly toggling the marker only. In that case
+        // we simply invert the marker formatting state, independent of the
+        // content formatting.
+        if (range.collapsed && ((range.startContainer === listItem && range.startOffset === 0) || (range.startContainer === listItem.firstChild && range.startOffset === 0))) {
+          desiredFormattingState = !hasMarkerFormatting;
+          hasFullContentFormatting = false; // ensure we don't attempt to sync content here
+        }
         
         // Fallback check: if marker is formatted and queryCommandState is true for full selection,
         // assume we should remove formatting even if hasFullContentFormatting is false
