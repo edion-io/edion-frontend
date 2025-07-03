@@ -6,6 +6,7 @@ import ChatHistoryMenu from './ChatHistory';
 import UserMenu from './UserMenu';
 import { UserSettings as UserSettingsType, ChatHistoryItem } from '../types';
 import { getUserSettingsFromStorage, getChatHistoryFromStorage } from '../utils/storageUtils';
+import { showChatDeletedToast } from '../utils/toastUtils';
 
 interface HeaderProps {
   userSettings?: UserSettingsType;
@@ -54,18 +55,48 @@ const Header: React.FC<HeaderProps> = ({ userSettings: propUserSettings, setUser
   };
 
   const handleDeleteChat = (chatId: string) => {
+    // Store the deleted items for undo functionality
+    const deletedHistoryItem = chatHistory.find(chat => chat.id === chatId);
+    const storedTabs = localStorage.getItem('chatTabs');
+    let deletedTab = null;
+    
+    if (storedTabs) {
+      const tabs = JSON.parse(storedTabs);
+      deletedTab = tabs.find((tab: { id: string }) => tab.id === chatId);
+    }
+
+    // Update chat history
     const updatedHistory = chatHistory.filter(chat => chat.id !== chatId);
     setChatHistory(updatedHistory);
     localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
     
-    const storedTabs = localStorage.getItem('chatTabs');
+    // Update tabs
     if (storedTabs) {
       const tabs = JSON.parse(storedTabs);
-      const updatedTabs = tabs.filter((tab: any) => tab.id !== chatId);
+      const updatedTabs = tabs.filter((tab: { id: string }) => tab.id !== chatId);
       localStorage.setItem('chatTabs', JSON.stringify(updatedTabs));
     }
 
+    // Create undo function for chat deletion
+    const undoDelete = () => {
+      if (deletedHistoryItem) {
+        // Restore the history item
+        setChatHistory(prevHistory => [...prevHistory, deletedHistoryItem]);
+        
+        // Update localStorage with the restored history
+        const currentHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+        localStorage.setItem('chatHistory', JSON.stringify([...currentHistory, deletedHistoryItem]));
+        
+        // Restore the tab if it existed
+        if (deletedTab) {
+          const currentTabs = JSON.parse(localStorage.getItem('chatTabs') || '[]');
+          localStorage.setItem('chatTabs', JSON.stringify([...currentTabs, deletedTab]));
+        }
+      }
+    };
 
+    // Show the deletion toast with undo functionality
+    showChatDeletedToast(undoDelete);
   };
 
   const toggleHistory = () => {
