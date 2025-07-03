@@ -2225,39 +2225,42 @@ const EditorToolbar = ({
     const editorEl = editorRef.current;
     if (!editorEl) return;
 
-    // Apply to ancestor <u> elements (outside-in)
-    let ancestor: Node | null = range.commonAncestorContainer;
-    while (ancestor && ancestor !== editorEl) {
-      if (ancestor.nodeType === Node.ELEMENT_NODE && (ancestor as HTMLElement).tagName === 'U') {
-        const uEl = ancestor as HTMLElement;
-        uEl.style.color = color;
-        (uEl.style as any).textDecorationColor = color;
-      }
-      ancestor = ancestor.parentNode;
-    }
-
-    // Apply to any <u> or elements with underline inside the selection
+    // Apply to underline elements strictly inside selection only
     const walker = document.createTreeWalker(
-      range.commonAncestorContainer,
+      editorEl,
       NodeFilter.SHOW_ELEMENT,
       {
         acceptNode: (node) => {
           if (!(node instanceof HTMLElement)) return NodeFilter.FILTER_SKIP;
           const el = node as HTMLElement;
-          if (el.tagName === 'U') return NodeFilter.FILTER_ACCEPT;
-          const dec = el.style.textDecoration || '';
-          if (dec.includes('underline')) return NodeFilter.FILTER_ACCEPT;
-          return NodeFilter.FILTER_SKIP;
+          // target <u> elements or elements with inline underline style
+          const hasUnderline = el.tagName === 'U' || (el.style.textDecoration || '').includes('underline');
+          if (!hasUnderline) return NodeFilter.FILTER_SKIP;
+          return range.intersectsNode(el) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
         }
       }
     );
 
-    let current: Node | null = walker.currentNode;
+    let current: Node | null = walker.nextNode();
     while (current) {
-      if (range.intersectsNode(current)) {
-        const el = current as HTMLElement;
-        el.style.color = color;
-        (el.style as any).textDecorationColor = color;
+      const el = current as HTMLElement;
+      // If this underline element extends beyond selection, we need to split it.
+      // Simplest approach: wrap the exact selection portion in a <span> with text-decoration-color.
+      if (range.comparePoint(el, 0) === 0 && range.comparePoint(el, el.childNodes.length) === 0) {
+        // Element fully inside selection – safe to style directly
+        el.style.textDecorationColor = color;
+        el.style.color = el.style.color || color;
+      } else {
+        // Partially overlapped – clone range portion into span to localize style
+        const subRange = range.cloneRange();
+        subRange.selectNodeContents(el);
+        subRange.setStart(range.startContainer, range.startOffset);
+        subRange.setEnd(range.endContainer, range.endOffset);
+        const span = document.createElement('span');
+        span.style.textDecoration = 'underline';
+        span.style.textDecorationColor = color;
+        span.style.color = color;
+        subRange.surroundContents(span);
       }
       current = walker.nextNode();
     }
