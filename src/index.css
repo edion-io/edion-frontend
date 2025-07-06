@@ -310,10 +310,10 @@
 }
 
 /* Math field styling - truly responsive to content */
-math-field {
-  font-size: 13px !important;
-  line-height: 1.1 !important;
-  min-height: 18px !important;
+.rich-text-editor math-field {
+  font-size: 0.8125rem; /* 13px at 16px base */
+  line-height: 1.1;
+  min-height: 1.125rem; /* 18px at 16px base */
   height: auto !important;
   max-height: none !important;
   padding: 2px 4px !important;
@@ -327,115 +327,3 @@ math-field {
   width: auto !important;
   min-width: 20px !important;
 }
-
-.dark math-field {
-  border-color: #374151 !important;
-  background-color: #1f2937 !important;
-  color: #f9fafb !important;
-}
-
-/* Focus state for math fields */
-math-field:focus {
-  outline: 1px solid #3b82f6 !important;
-  outline-offset: -1px !important;
-  border-color: #3b82f6 !important;
-}
-
-/* Force all internal MathLive containers to be responsive */
-math-field .ML__container,
-math-field .ML__content,
-math-field .ML__base,
-math-field .katex,
-math-field .katex-html {
-  height: auto !important;
-  min-height: auto !important;
-  max-height: none !important;
-  line-height: 1.1 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: visible !important;
-  width: auto !important;
-  display: inline-block !important;
-}
-
-/* Ensure fractions and other tall content can expand */
-math-field .frac,
-math-field .fraction,
-math-field .ML__fraction,
-math-field .sqrt,
-math-field .ML__sqrt,
-math-field .ML__radical {
-  height: auto !important;
-  min-height: auto !important;
-  max-height: none !important;
-  overflow: visible !important;
-}
-
-/* Make sure superscripts and subscripts don't get cut off */
-math-field .ML__sup,
-math-field .ML__sub,
-math-field sup,
-math-field sub {
-  height: auto !important;
-  overflow: visible !important;
-}
-
-/* Hide toolbars and keyboards when not focused to save space */
-math-field:not(:focus) .ML__keyboard,
-math-field:not(:focus) .ML__toolbar,
-math-field:not(:focus) .ML__keyboard-toolbar {
-  display: none !important;
-}
-
-/* Make focused toolbars very compact */
-math-field:focus .ML__keyboard-toolbar,
-math-field:focus .ML__toolbar {
-  height: 20px !important;
-  min-height: 20px !important;
-  padding: 1px !important;
-  margin: 0 !important;
-}
-
-/* Make all buttons extremely small */
-math-field .ML__keyboard-toolbar button,
-math-field .ML__toolbar button,
-math-field button {
-  height: 14px !important;
-  min-height: 14px !important;
-  width: 14px !important;
-  min-width: 14px !important;
-  padding: 0 !important;
-  margin: 0 1px !important;
-  font-size: 8px !important;
-  line-height: 1 !important;
-}
-
-/* Make the virtual keyboard compact */
-.ML__keyboard {
-  font-size: 10px !important;
-  padding: 2px !important;
-}
-
-.ML__keyboard button {
-  height: 16px !important;
-  min-height: 16px !important;
-  padding: 1px 2px !important;
-  font-size: 9px !important;
-  margin: 1px !important;
-}
-
-/* Compact popup menus */
-.ML__popover,
-.ML__menu {
-  font-size: 10px !important;
-  padding: 2px !important;
-}
-
-.ML__popover button,
-.ML__menu button {
-  height: 16px !important;
-  min-height: 16px !important;
-  padding: 1px 2px !important;
-  font-size: 9px !important;
-}
-
