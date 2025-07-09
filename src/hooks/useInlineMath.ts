@@ -72,17 +72,33 @@ export const useInlineMath = () => {
   };
 
   /**
-   * Remove a math field and its adjacent zero-width spaces
+   * Remove a math field and clean up spacing to maintain single cursor position
    */
   const removeMathField = (mathField: HTMLElement) => {
     const nextSibling = mathField.nextSibling;
     const prevSibling = mathField.previousSibling;
     
-    if (nextSibling?.nodeType === Node.TEXT_NODE && nextSibling.nodeValue === '\u200B') {
+    // Check if we have math fields on both sides
+    const hasNextMathField = nextSibling?.nextSibling && 
+      (nextSibling.nextSibling as HTMLElement).tagName === 'MATH-FIELD';
+    const hasPrevMathField = prevSibling?.previousSibling && 
+      (prevSibling.previousSibling as HTMLElement).tagName === 'MATH-FIELD';
+    
+    // Remove spacing nodes adjacent to this math field
+    if (nextSibling?.nodeType === Node.TEXT_NODE && 
+        (nextSibling.nodeValue === '\u200B' || nextSibling.nodeValue === ' ')) {
       nextSibling.remove();
     }
-    if (prevSibling?.nodeType === Node.TEXT_NODE && prevSibling.nodeValue === '\u200B') {
+    if (prevSibling?.nodeType === Node.TEXT_NODE && 
+        (prevSibling.nodeValue === '\u200B' || prevSibling.nodeValue === ' ')) {
       prevSibling.remove();
+    }
+    
+    // If we're removing a math field between two other math fields,
+    // ensure there's still a single space between them
+    if (hasNextMathField && hasPrevMathField) {
+      const singleSpace = document.createTextNode(' ');
+      mathField.parentNode?.insertBefore(singleSpace, mathField);
     }
     
     mathField.remove();
@@ -134,12 +150,20 @@ export const useInlineMath = () => {
             (newMathField as HTMLElement).scrollIntoView({ block: 'nearest' });
           }
           
-          // Add zero-width space after the field to ensure proper cursor placement
-          // when exiting the math field
-          addZeroWidthSpace(newMathField);
+          // Clean up any redundant spacing around the math field before adding our own
+          cleanupRedundantSpacing(newMathField);
           
-          // Focus the math field - this needs to happen after adding the space
-          // and should be the last operation to ensure proper focus
+          // Add a single zero-width space after the field for cursor positioning
+          // Only if there isn't already a space or another math field immediately after
+          const nextSibling = newMathField.nextSibling;
+          const needsSpace = !nextSibling || 
+            (nextSibling.nodeType === Node.ELEMENT_NODE && (nextSibling as HTMLElement).tagName === 'MATH-FIELD');
+          
+          if (needsSpace) {
+            addZeroWidthSpace(newMathField);
+          }
+          
+          // Focus the math field - this needs to happen after spacing cleanup
           (newMathField as HTMLElement).focus();
           
           // Store a reference to prevent automatic refocus on the editor
@@ -157,6 +181,47 @@ export const useInlineMath = () => {
         }
       }
     }, 0);
+  };
+
+  /**
+   * Clean up redundant spacing around math fields to ensure single cursor position
+   */
+  const cleanupRedundantSpacing = (mathField: Element) => {
+    const prevSibling = mathField.previousSibling;
+    const nextSibling = mathField.nextSibling;
+    
+    // If previous sibling is a math field, consolidate spacing between them
+    if (prevSibling && prevSibling.nodeType === Node.ELEMENT_NODE && 
+        (prevSibling as HTMLElement).tagName === 'MATH-FIELD') {
+      
+      // Remove any space nodes between the two math fields
+      let nodeToCheck = prevSibling.nextSibling;
+      const spacesToRemove: Node[] = [];
+      
+      while (nodeToCheck && nodeToCheck !== mathField) {
+        if (nodeToCheck.nodeType === Node.TEXT_NODE && 
+            (nodeToCheck.nodeValue === '\u200B' || nodeToCheck.nodeValue === ' ')) {
+          spacesToRemove.push(nodeToCheck);
+        }
+        nodeToCheck = nodeToCheck.nextSibling;
+      }
+      
+      // Remove all but one spacing element
+      if (spacesToRemove.length > 1) {
+        for (let i = 1; i < spacesToRemove.length; i++) {
+          spacesToRemove[i].parentNode?.removeChild(spacesToRemove[i]);
+        }
+      }
+      
+      // Ensure the remaining spacing is a single space for better visibility
+      if (spacesToRemove.length > 0) {
+        spacesToRemove[0].nodeValue = ' ';
+      } else {
+        // If no spacing exists between math fields, add a single space
+        const singleSpace = document.createTextNode(' ');
+        mathField.parentNode?.insertBefore(singleSpace, mathField);
+      }
+    }
   };
 
   /**
@@ -202,10 +267,20 @@ export const useInlineMath = () => {
     if (isInsideMathField()) {
       const mathField = findMathField(selection.anchorNode);
       if (!mathField) return;
-            
-      // Create a text node with a space after the math field
-      const spaceNode = document.createTextNode(' ');
-      mathField.parentNode?.insertBefore(spaceNode, mathField.nextSibling);
+      
+      // Check if there's already spacing after the math field
+      const nextSibling = mathField.nextSibling;
+      let spaceNode: Node;
+      
+      if (nextSibling && nextSibling.nodeType === Node.TEXT_NODE && 
+          (nextSibling.nodeValue === '\u200B' || nextSibling.nodeValue === ' ')) {
+        // Use existing space node
+        spaceNode = nextSibling;
+      } else {
+        // Create a single space after the math field
+        spaceNode = document.createTextNode(' ');
+        mathField.parentNode?.insertBefore(spaceNode, mathField.nextSibling);
+      }
       
       // Insert new math delimiters after the space
       positionCursorAndInsert(spaceNode, '\\(\\)');

@@ -158,21 +158,49 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       const range = selection.getRangeAt(0);
       const target = e.target as HTMLElement;
       
-      // Special handler for moving left from a ZWS into a math field
+      console.log(`[MATH NAV] ${e.key} pressed, target:`, target.tagName, target.classList.toString());
+      
+      // Special handler for moving left from a space (regular or ZWS) into a math field
       if (e.key === 'ArrowLeft' &&
-          range.startContainer.nodeType === Node.TEXT_NODE &&
-          range.startContainer.textContent === '\u200B')
-      {
-          const potentialMathField = range.startContainer.previousSibling;
+          range.startContainer.nodeType === Node.TEXT_NODE) {
           
-          if (potentialMathField && potentialMathField instanceof HTMLElement && potentialMathField.classList.contains('math-field')) {
-              e.preventDefault();
-              const mathFieldElement = potentialMathField as any;
-              mathFieldElement.focus();
-              mathFieldElement.executeCommand(['moveTo', 'end']); // Move caret to the end
-              // Clean up the now-unnecessary zero-width space
-              range.startContainer.parentNode?.removeChild(range.startContainer);
-              return;
+          // Check if we're in a space between math fields and at the start, or just a single-char space
+          const textContent = range.startContainer.textContent || '';
+          const isAtStart = range.startOffset === 0;
+          const isSpaceNode = textContent === '\u200B' || textContent === ' ';
+          
+          if (isAtStart || isSpaceNode) {
+            const potentialMathField = range.startContainer.previousSibling;
+            
+            if (potentialMathField && potentialMathField instanceof HTMLElement && potentialMathField.classList.contains('math-field')) {
+                e.preventDefault();
+                const mathFieldElement = potentialMathField as any;
+                mathFieldElement.focus();
+                mathFieldElement.executeCommand(['moveTo', 'end']); // Move caret to the end
+                return;
+            }
+          }
+      }
+      
+      // Special handler for moving right from a space (regular or ZWS) into a math field
+      if (e.key === 'ArrowRight' &&
+          range.startContainer.nodeType === Node.TEXT_NODE) {
+          
+          // Check if we're in a space between math fields and at the end, or just a single-char space
+          const textContent = range.startContainer.textContent || '';
+          const isAtEnd = range.startOffset === textContent.length;
+          const isSpaceNode = textContent === '\u200B' || textContent === ' ';
+          
+          if (isAtEnd || isSpaceNode) {
+            const potentialMathField = range.startContainer.nextSibling;
+            
+            if (potentialMathField && potentialMathField instanceof HTMLElement && potentialMathField.classList.contains('math-field')) {
+                e.preventDefault();
+                const mathFieldElement = potentialMathField as any;
+                mathFieldElement.focus();
+                mathFieldElement.executeCommand(['moveTo', 'start']); // Move caret to the start
+                return;
+            }
           }
       }
       
@@ -183,23 +211,34 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         // Check if we're just before a math field
         let nextNode: Node | null = null;
         
+        console.log(`[MATH NAV] Right arrow - analyzing position:`, {
+          containerType: range.startContainer.nodeType === Node.TEXT_NODE ? 'TEXT_NODE' : 'ELEMENT_NODE',
+          startOffset: range.startOffset,
+          textLength: range.startContainer.textContent?.length,
+          textContent: JSON.stringify(range.startContainer.textContent)
+        });
+        
         // If we're at the end of a text node, look for next sibling
         if (range.startOffset === (range.startContainer.textContent?.length || 0)) {
           nextNode = range.startContainer.nextSibling;
+          console.log(`[MATH NAV] At end of text node, nextSibling:`, nextNode?.nodeName, (nextNode as HTMLElement)?.classList?.toString());
         }
         // If we're at an element boundary, check the next node at that position
         else if (range.startContainer.nodeType === Node.ELEMENT_NODE) {
           nextNode = (range.startContainer as Element).childNodes[range.startOffset];
+          console.log(`[MATH NAV] At element boundary, childNode:`, nextNode?.nodeName, (nextNode as HTMLElement)?.classList?.toString());
         }
         
         // If we haven't found a next node yet, try parent's next sibling
         if (!nextNode && range.startContainer.parentNode) {
           nextNode = range.startContainer.parentNode.nextSibling;
+          console.log(`[MATH NAV] Checking parent's nextSibling:`, nextNode?.nodeName, (nextNode as HTMLElement)?.classList?.toString());
         }
         
         // Check if the next node is a math field
         if (nextNode && nextNode instanceof HTMLElement && nextNode.classList.contains('math-field')) {
           mathField = nextNode;
+          console.log(`[MATH NAV] Found math field to enter:`, mathField);
         }
       } else if (e.key === 'ArrowLeft') {
         // Check if we're just after a math field
@@ -236,13 +275,33 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
                                     range.startOffset === range.startContainer.childNodes.length :
                                     range.startOffset === 0);
         
-        const inZeroWidthNodeForLeft = e.key === 'ArrowLeft' && 
+        const inSpaceNodeForLeft = e.key === 'ArrowLeft' && 
                                      range.startContainer.nodeType === Node.TEXT_NODE &&
-                                     range.startContainer.textContent === '\u200B';
+                                     (range.startContainer.textContent === '\u200B' || range.startContainer.textContent === ' ') &&
+                                     range.startOffset === 0;
+                                     
+        const inSpaceNodeForRight = e.key === 'ArrowRight' && 
+                                     range.startContainer.nodeType === Node.TEXT_NODE &&
+                                     (range.startContainer.textContent === '\u200B' || range.startContainer.textContent === ' ') &&
+                                     range.startOffset === range.startContainer.textContent.length;
 
-        if ((e.key === 'ArrowRight' && (isAtEnd || isAtElementBoundary)) || 
-            (e.key === 'ArrowLeft' && (isAtStart || isAtElementBoundary || inZeroWidthNodeForLeft))) {
+        console.log(`[MATH NAV] Edge detection:`, {
+          direction: e.key,
+          isAtStart,
+          isAtEnd,
+          isAtElementBoundary,
+          inSpaceNodeForLeft,
+          inSpaceNodeForRight,
+          textContent: JSON.stringify(range.startContainer.textContent),
+          offset: range.startOffset,
+          willEnterMathField: (e.key === 'ArrowRight' && (isAtEnd || isAtElementBoundary || inSpaceNodeForRight)) || 
+                             (e.key === 'ArrowLeft' && (isAtStart || isAtElementBoundary || inSpaceNodeForLeft))
+        });
+
+        if ((e.key === 'ArrowRight' && (isAtEnd || isAtElementBoundary || inSpaceNodeForRight)) || 
+            (e.key === 'ArrowLeft' && (isAtStart || isAtElementBoundary || inSpaceNodeForLeft))) {
           e.preventDefault();
+          console.log(`[MATH NAV] Entering math field from outside`);
           
           // Focus the math field - MathLive will automatically position the cursor
           // at the start when moving right, and at the end when moving left
@@ -257,39 +316,68 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         const position = mathField.position;
         const lastPosition = mathField.value?.length || 0;
         
-        if ((e.key === 'ArrowRight' && position >= lastPosition) || 
+        console.log(`[MATH NAV] INSIDE math field:`, {
+          direction: e.key,
+          currentPosition: position,
+          lastPosition: lastPosition,
+          mathValue: JSON.stringify(mathField.value),
+          shouldExitRight: e.key === 'ArrowRight' && (position > lastPosition || (lastPosition === 0 && position === 0)),
+          shouldExitLeft: e.key === 'ArrowLeft' && position <= 0,
+          positionComparison: {
+            'position === lastPosition': position === lastPosition,
+            'position >= lastPosition': position >= lastPosition,
+            'position > lastPosition': position > lastPosition
+          }
+        });
+        
+        if ((e.key === 'ArrowRight' && (position > lastPosition || (lastPosition === 0 && position === 0))) || 
             (e.key === 'ArrowLeft' && position <= 0)) {
+          console.log(`[MATH NAV] EXITING math field - checking for adjacent math field...`);
           e.preventDefault();
           
-          // Find the adjacent text node
+          // Find the adjacent node
           const adjacentNode = e.key === 'ArrowRight' ? target.nextSibling : target.previousSibling;
           
+          console.log(`[MATH NAV] Adjacent node:`, {
+            exists: !!adjacentNode,
+            nodeType: adjacentNode?.nodeType,
+            textContent: adjacentNode?.textContent,
+            nodeName: adjacentNode?.nodeName
+          });
+          
           if (adjacentNode) {
-            // Create a new range at the appropriate position
+            // Always position cursor in the adjacent space first
             const newRange = document.createRange();
             if (adjacentNode.nodeType === Node.TEXT_NODE) {
-              // If it's a text node, move to its edge
+              // Position cursor at the edge of the text node that's closest to the math field
               if (e.key === 'ArrowRight') {
-                // For right arrow, position at the end of the adjacent text node
-                // This ensures the next right arrow press will immediately find the next math field
+                newRange.setStart(adjacentNode, 0);
+                console.log(`[MATH NAV] Positioned at START of adjacent text node, offset: 0`);
+              } else {
                 const offset = adjacentNode.textContent!.length;
                 newRange.setStart(adjacentNode, offset);
-              } else {
-                // For left arrow, position at the start of the adjacent text node
-                // This ensures the next left arrow press will immediately find the previous math field
-                newRange.setStart(adjacentNode, 0);
+                console.log(`[MATH NAV] Positioned at END of adjacent text node, offset: ${offset}`);
               }
             } else {
-              // For other nodes, just move to their edge
-              newRange.setStart(adjacentNode, e.key === 'ArrowRight' ? 0 : 0);
+              // For other nodes, position at their edge closest to the math field
+              if (e.key === 'ArrowRight') {
+                newRange.setStart(adjacentNode, 0);
+              } else {
+                const childCount = adjacentNode.nodeType === Node.ELEMENT_NODE ? 
+                  (adjacentNode as Element).childNodes.length : 0;
+                newRange.setStart(adjacentNode, childCount);
+              }
+              console.log(`[MATH NAV] Positioned at edge of non-text node`);
             }
             newRange.collapse(true);
             
             // Apply the new selection
             selection.removeAllRanges();
             selection.addRange(newRange);
+            console.log(`[MATH NAV] New cursor position applied`);
           } else {
-            // Create a new text node if needed, but with actual space instead of zero-width
+            console.log(`[MATH NAV] No adjacent node found, creating new text node`);
+            // Create a new text node if needed
             const textNode = document.createTextNode(' ');
             if (e.key === 'ArrowRight') {
               target.parentNode?.insertBefore(textNode, target.nextSibling);
@@ -304,6 +392,10 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             selection.removeAllRanges();
             selection.addRange(newRange);
           }
+        } else {
+          // If we're inside a math field but not at the exit condition, don't process the "entering math field" logic
+          console.log(`[MATH NAV] Inside math field, not at exit condition - allowing normal navigation`);
+          return;
         }
       }
     }
@@ -737,6 +829,10 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
               }
             }
           }
+        } else {
+          // If we're inside a math field but not exiting, don't process the "entering math field" logic
+          console.log(`[MATH NAV] Inside math field, not at exit condition - allowing normal navigation`);
+          return;
         }
       }
     }
@@ -1552,7 +1648,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-
+    
     const handleInput = () => {
       // Get the current content and pass it back
       onChange(editor.innerHTML);
