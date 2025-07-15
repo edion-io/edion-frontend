@@ -160,7 +160,7 @@ export const useInlineMath = () => {
             (nextSibling.nodeType === Node.ELEMENT_NODE && (nextSibling as HTMLElement).tagName === 'MATH-FIELD');
           
           if (needsSpace) {
-            addZeroWidthSpace(newMathField);
+          addZeroWidthSpace(newMathField);
           }
           
           // Focus the math field - this needs to happen after spacing cleanup
@@ -267,7 +267,7 @@ export const useInlineMath = () => {
     if (isInsideMathField()) {
       const mathField = findMathField(selection.anchorNode);
       if (!mathField) return;
-      
+            
       // Check if there's already spacing after the math field
       const nextSibling = mathField.nextSibling;
       let spaceNode: Node;
@@ -279,7 +279,7 @@ export const useInlineMath = () => {
       } else {
         // Create a single space after the math field
         spaceNode = document.createTextNode(' ');
-        mathField.parentNode?.insertBefore(spaceNode, mathField.nextSibling);
+      mathField.parentNode?.insertBefore(spaceNode, mathField.nextSibling);
       }
       
       // Insert new math delimiters after the space

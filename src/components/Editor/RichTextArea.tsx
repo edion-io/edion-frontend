@@ -313,29 +313,46 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       // Handle cursor movement from within math field
       if (target.classList.contains('math-field')) {
         const mathField = target as any;
-        const position = mathField.position;
-        const lastPosition = mathField.value?.length || 0;
+        // Use MathLive's built-in edge detection for complex expressions
+        // Try to move in the direction first, then check if we're still in the same position
+        const initialPosition = mathField.position;
         
-        // Improved edge detection for math fields with content
-        const isAtRightEdge = e.key === 'ArrowRight' && (
-          position >= lastPosition || // At or beyond last position
-          (lastPosition === 0 && position === 0) // Empty field
-        );
+        // Temporarily try to move the cursor in the desired direction
+        let isAtEdge = false;
         
-        const isAtLeftEdge = e.key === 'ArrowLeft' && position <= 0;
+        if (e.key === 'ArrowRight') {
+          // Try to move right
+          mathField.executeCommand(['moveToNextChar']);
+          const newPosition = mathField.position;
+          
+          // If position didn't change, we're at the right edge
+          isAtEdge = (newPosition === initialPosition);
+          
+          // Move back to original position
+          mathField.position = initialPosition;
+        } else if (e.key === 'ArrowLeft') {
+          // Try to move left
+          mathField.executeCommand(['moveToPreviousChar']);
+          const newPosition = mathField.position;
+          
+          // If position didn't change, we're at the left edge
+          isAtEdge = (newPosition === initialPosition);
+          
+          // Move back to original position
+          mathField.position = initialPosition;
+        }
+        
+        const isAtRightEdge = e.key === 'ArrowRight' && isAtEdge;
+        const isAtLeftEdge = e.key === 'ArrowLeft' && isAtEdge;
         
         console.log(`[MATH NAV] INSIDE math field:`, {
           direction: e.key,
-          currentPosition: position,
-          lastPosition: lastPosition,
+          currentPosition: initialPosition,
           mathValue: JSON.stringify(mathField.value),
           isAtRightEdge,
           isAtLeftEdge,
-          positionComparison: {
-            'position === lastPosition': position === lastPosition,
-            'position >= lastPosition': position >= lastPosition,
-            'position > lastPosition': position > lastPosition
-          }
+          isAtEdge,
+          edgeDetectionMethod: 'MathLive movement test'
         });
         
         if (isAtRightEdge || isAtLeftEdge) {
@@ -1943,6 +1960,76 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       // Mark as initialized
       mathField.setAttribute('data-initialized', 'true');
     });
+  };
+  
+  // Function to preserve math fields during DOM operations
+  const preserveMathFields = <T extends any>(operation: () => T): T => {
+    if (!editorRef.current) return operation();
+    
+    // Store all math fields and their data before the operation
+    const mathFields = Array.from(editorRef.current.querySelectorAll('math-field'));
+    const mathFieldsData = mathFields.map(field => ({
+      element: field,
+      latex: field.getAttribute('data-latex') || '',
+      value: (field as any).value || '',
+      placeholder: `__MATH_FIELD_${Math.random().toString(36).substr(2, 9)}__`
+    }));
+    
+    // Replace math fields with placeholders
+    mathFieldsData.forEach(data => {
+      const placeholder = document.createTextNode(data.placeholder);
+      data.element.parentNode?.replaceChild(placeholder, data.element);
+    });
+    
+    // Execute the operation
+    const result = operation();
+    
+    // Restore math fields from placeholders
+    setTimeout(() => {
+      mathFieldsData.forEach(data => {
+        const walker = document.createTreeWalker(
+          editorRef.current!,
+          NodeFilter.SHOW_TEXT,
+          null
+        );
+        
+        let textNode: Text | null;
+        while ((textNode = walker.nextNode() as Text)) {
+          if (textNode.nodeValue?.includes(data.placeholder)) {
+            // Replace placeholder with math field
+            const mathField = document.createElement('math-field');
+            mathField.className = 'math-field';
+            mathField.setAttribute('data-latex', data.latex);
+            mathField.setAttribute('value', data.value);
+            mathField.setAttribute('virtual-keyboard-mode', 'manual');
+            mathField.setAttribute('keypress-sound', 'none');
+            mathField.setAttribute('plonk-sound', 'none');
+            
+            // Replace the text node containing the placeholder
+            const newText = textNode.nodeValue.replace(data.placeholder, '');
+            if (newText) {
+              textNode.nodeValue = newText;
+              textNode.parentNode?.insertBefore(mathField, textNode);
+            } else {
+              textNode.parentNode?.replaceChild(mathField, textNode);
+            }
+            
+            // Add event listener
+            mathField.addEventListener('input', () => {
+              const updatedLatex = (mathField as any).value;
+              mathField.setAttribute('data-latex', updatedLatex);
+              if (editorRef.current) {
+                onChange(editorRef.current.innerHTML);
+              }
+            });
+            
+            break;
+          }
+        }
+      });
+    }, 0);
+    
+    return result;
   };
   
   return (

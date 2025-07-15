@@ -2002,9 +2002,80 @@ const EditorToolbar = ({
     const alignmentToTransfer = context.currentList.style.textAlign;
     
     disableTransitionsDuring(() => {
-      // Convert list type
-      document.execCommand(fromType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-      document.execCommand(toType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+      // Convert list type with math field preservation
+      const preserveMathFields = (operation: () => void) => {
+        if (!editorRef.current) return;
+        
+        // Store all math fields and their data before the operation
+        const mathFields = Array.from(editorRef.current.querySelectorAll('math-field'));
+        const mathFieldsData = mathFields.map(field => ({
+          element: field,
+          latex: field.getAttribute('data-latex') || '',
+          value: (field as any).value || '',
+          placeholder: `__MATH_FIELD_${Math.random().toString(36).substr(2, 9)}__`
+        }));
+        
+        // Replace math fields with placeholders
+        mathFieldsData.forEach(data => {
+          const placeholder = document.createTextNode(data.placeholder);
+          data.element.parentNode?.replaceChild(placeholder, data.element);
+        });
+        
+        // Execute the operation
+        operation();
+        
+        // Restore math fields from placeholders
+        setTimeout(() => {
+          mathFieldsData.forEach(data => {
+            const walker = document.createTreeWalker(
+              editorRef.current!,
+              NodeFilter.SHOW_TEXT,
+              null
+            );
+            
+            let textNode: Text | null;
+            while ((textNode = walker.nextNode() as Text)) {
+              if (textNode.nodeValue?.includes(data.placeholder)) {
+                // Replace placeholder with math field
+                const mathField = document.createElement('math-field');
+                mathField.className = 'math-field';
+                mathField.setAttribute('data-latex', data.latex);
+                mathField.setAttribute('value', data.value);
+                mathField.setAttribute('virtual-keyboard-mode', 'manual');
+                mathField.setAttribute('keypress-sound', 'none');
+                mathField.setAttribute('plonk-sound', 'none');
+                
+                // Replace the text node containing the placeholder
+                const newText = textNode.nodeValue.replace(data.placeholder, '');
+                if (newText) {
+                  textNode.nodeValue = newText;
+                  textNode.parentNode?.insertBefore(mathField, textNode);
+                } else {
+                  textNode.parentNode?.replaceChild(mathField, textNode);
+                }
+                
+                // Add event listener
+                mathField.addEventListener('input', () => {
+                  const updatedLatex = (mathField as any).value;
+                  mathField.setAttribute('data-latex', updatedLatex);
+                  if (editorRef.current) {
+                    const event = new Event('input', { bubbles: true });
+                    editorRef.current.dispatchEvent(event);
+                  }
+                });
+                
+                break;
+              }
+            }
+          });
+        }, 0);
+      };
+      
+      preserveMathFields(() => {
+        // Convert list type
+        document.execCommand(fromType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+        document.execCommand(toType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+      });
       
       // Find the newly created list
       const selection = window.getSelection();
@@ -2098,8 +2169,79 @@ const EditorToolbar = ({
       currentElementForIndentSearch = currentElementForIndentSearch.parentNode;
     }
     
-    // Create the list
-    document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+    // Create the list with math field preservation
+    const preserveMathFields = (operation: () => void) => {
+      if (!editorRef.current) return;
+      
+      // Store all math fields and their data before the operation
+      const mathFields = Array.from(editorRef.current.querySelectorAll('math-field'));
+      const mathFieldsData = mathFields.map(field => ({
+        element: field,
+        latex: field.getAttribute('data-latex') || '',
+        value: (field as any).value || '',
+        placeholder: `__MATH_FIELD_${Math.random().toString(36).substr(2, 9)}__`
+      }));
+      
+      // Replace math fields with placeholders
+      mathFieldsData.forEach(data => {
+        const placeholder = document.createTextNode(data.placeholder);
+        data.element.parentNode?.replaceChild(placeholder, data.element);
+      });
+      
+      // Execute the operation
+      operation();
+      
+      // Restore math fields from placeholders
+      setTimeout(() => {
+        mathFieldsData.forEach(data => {
+          const walker = document.createTreeWalker(
+            editorRef.current!,
+            NodeFilter.SHOW_TEXT,
+            null
+          );
+          
+          let textNode: Text | null;
+          while ((textNode = walker.nextNode() as Text)) {
+            if (textNode.nodeValue?.includes(data.placeholder)) {
+              // Replace placeholder with math field
+              const mathField = document.createElement('math-field');
+              mathField.className = 'math-field';
+              mathField.setAttribute('data-latex', data.latex);
+              mathField.setAttribute('value', data.value);
+              mathField.setAttribute('virtual-keyboard-mode', 'manual');
+              mathField.setAttribute('keypress-sound', 'none');
+              mathField.setAttribute('plonk-sound', 'none');
+              
+              // Replace the text node containing the placeholder
+              const newText = textNode.nodeValue.replace(data.placeholder, '');
+              if (newText) {
+                textNode.nodeValue = newText;
+                textNode.parentNode?.insertBefore(mathField, textNode);
+              } else {
+                textNode.parentNode?.replaceChild(mathField, textNode);
+              }
+              
+              // Add event listener
+              mathField.addEventListener('input', () => {
+                const updatedLatex = (mathField as any).value;
+                mathField.setAttribute('data-latex', updatedLatex);
+                if (editorRef.current) {
+                  const event = new Event('input', { bubbles: true });
+                  editorRef.current.dispatchEvent(event);
+                }
+              });
+              
+              break;
+            }
+          }
+        });
+      }, 0);
+    };
+    
+    preserveMathFields(() => {
+      // Create the list
+      document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+    });
     
     // Find the new list
     const newSelection = window.getSelection();
