@@ -316,13 +316,21 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         const position = mathField.position;
         const lastPosition = mathField.value?.length || 0;
         
+        // Improved edge detection for math fields with content
+        const isAtRightEdge = e.key === 'ArrowRight' && (
+          position >= lastPosition || // At or beyond last position
+          (lastPosition === 0 && position === 0) // Empty field
+        );
+        
+        const isAtLeftEdge = e.key === 'ArrowLeft' && position <= 0;
+        
         console.log(`[MATH NAV] INSIDE math field:`, {
           direction: e.key,
           currentPosition: position,
           lastPosition: lastPosition,
           mathValue: JSON.stringify(mathField.value),
-          shouldExitRight: e.key === 'ArrowRight' && (position > lastPosition || (lastPosition === 0 && position === 0)),
-          shouldExitLeft: e.key === 'ArrowLeft' && position <= 0,
+          isAtRightEdge,
+          isAtLeftEdge,
           positionComparison: {
             'position === lastPosition': position === lastPosition,
             'position >= lastPosition': position >= lastPosition,
@@ -330,8 +338,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           }
         });
         
-        if ((e.key === 'ArrowRight' && (position > lastPosition || (lastPosition === 0 && position === 0))) || 
-            (e.key === 'ArrowLeft' && position <= 0)) {
+        if (isAtRightEdge || isAtLeftEdge) {
           console.log(`[MATH NAV] EXITING math field - checking for adjacent math field...`);
           e.preventDefault();
           
