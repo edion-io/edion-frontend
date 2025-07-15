@@ -1653,6 +1653,86 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
     }
   };
   
+  // --- Place caret at end of line when clicking whitespace to the right ---
+  const handleEditorMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!editorRef.current) return;
+    // Only respond to left clicks
+    if (e.button !== 0) return;
+
+    // Get the click coordinates relative to the viewport
+    const { clientX, clientY } = e;
+    // Find the element at the click point
+    const clickedElem = document.elementFromPoint(clientX, clientY);
+
+    // If the click is on a math-field, let MathLive handle it
+    if (clickedElem && (clickedElem as HTMLElement).closest('math-field')) return;
+
+    // Find the nearest block (li, p, div, etc.)
+    let blockElem: HTMLElement | null = clickedElem as HTMLElement;
+    while (blockElem && blockElem !== editorRef.current) {
+      if (['LI', 'P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(blockElem.tagName)) {
+        break;
+      }
+      blockElem = blockElem.parentElement;
+    }
+    if (!blockElem || blockElem === editorRef.current) {
+      // If click is on the editor background, place caret at end of last block
+      const blocks = Array.from(editorRef.current.querySelectorAll('li, p, div, h1, h2, h3, h4, h5, h6')) as HTMLElement[];
+      if (blocks.length > 0) {
+        blockElem = blocks[blocks.length - 1];
+      } else {
+        blockElem = editorRef.current;
+      }
+    }
+
+    // Get the bounding rect of the block
+    const rect = blockElem.getBoundingClientRect();
+
+    // --- Find the bounding rect of the last visible character ---
+    let lastRect = rect;
+    let lastTextNode: Node | null = null;
+    let walker = document.createTreeWalker(blockElem, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+    });
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      lastTextNode = node;
+    }
+    if (lastTextNode) {
+      const range = document.createRange();
+      range.selectNodeContents(lastTextNode);
+      // Collapse to end to get the last character's rect
+      range.collapse(false);
+      const rects = range.getClientRects();
+      if (rects.length > 0) {
+        lastRect = rects[rects.length - 1];
+      }
+    }
+
+    // If click is to the right of the last visible character, move caret to end
+    if (clientX > lastRect.right - 2) { // 2px tolerance
+      e.preventDefault();
+      // Find the deepest last child node
+      let node: Node = blockElem;
+      while (node.lastChild) node = node.lastChild;
+      // If it's a text node, place caret at end
+      const range = document.createRange();
+      if (node.nodeType === Node.TEXT_NODE) {
+        range.setStart(node, node.textContent?.length || 0);
+      } else {
+        range.setStart(blockElem, blockElem.childNodes.length);
+      }
+      range.collapse(true);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      // Focus editor
+      editorRef.current.focus();
+    }
+  };
+  
   // Initialize the editor with content
   useEffect(() => {
     if (editorRef.current) {
@@ -2039,6 +2119,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       className="p-4 min-h-[300px] focus:outline-none overflow-y-auto rich-text-editor"
       style={{ fontSize: '16px', lineHeight: '1.5' }}
       onKeyDown={handleEditorKeyDown}
+      onMouseDown={handleEditorMouseDown}
     />
   );
 };
