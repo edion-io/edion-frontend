@@ -241,59 +241,75 @@ export const useInlineMath = () => {
     if (!selection || !selection.rangeCount) return;
 
     const range = selection.getRangeAt(0);
+
+    // Ensure we are inside a suitable container (paragraph or the editor root)
     const container = range.startContainer;
-    
-    // Handle the case of empty lines - ensure we're in a proper container
-    if (container.nodeType === Node.ELEMENT_NODE && 
+    if (container.nodeType === Node.ELEMENT_NODE &&
         (container as HTMLElement).getAttribute('contenteditable') === 'true' &&
-        range.startOffset === 0 && 
         (container as HTMLElement).childNodes.length === 0) {
-      // We're on an empty contenteditable element
-      // First create a paragraph to contain our math
+      // If editor is empty, create a paragraph to hold the math field
       const paragraph = document.createElement('p');
       (container as HTMLElement).appendChild(paragraph);
-      
-      // Set selection to the new paragraph
       range.setStart(paragraph, 0);
-      range.setEnd(paragraph, 0);
+      range.collapse(true);
       selection.removeAllRanges();
       selection.addRange(range);
-    } else if (container.nodeType === Node.ELEMENT_NODE && 
-              (container as HTMLElement).tagName === 'P' && 
-              (container as HTMLElement).childNodes.length === 0) {
-      // We're in an empty paragraph, that's fine - selection is already correct
     }
 
+    // HTML snippet for an empty MathLive field followed by a zero-width space so the caret can exit the field later
+    const mathFieldHTML =
+      '<math-field class="math-field" data-latex="" value="" virtual-keyboard-mode="manual" keypress-sound="none" plonk-sound="none"></math-field>' +
+      '\u200B';
+
+    const insertMathFieldAtCursor = () => {
+      // Insert HTML (math-field + zero-width space) at the caret
+      document.execCommand('insertHTML', false, mathFieldHTML);
+
+      // After insertion, focus the newly created math field so the caret is inside it
+      const editor = document.querySelector('[contenteditable="true"]') as HTMLElement | null;
+      if (!editor) return;
+
+      const fields = editor.querySelectorAll('math-field');
+      if (fields.length === 0) return;
+      const newMathField = fields[fields.length - 1] as HTMLElement;
+
+      // Attach an undo handler so Cmd/Ctrl+Z inside the field triggers editor undo
+      const handleFieldUndo = (e: KeyboardEvent) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          // Move focus back to the editor then invoke native undo
+          editor.focus();
+          document.execCommand('undo');
+        }
+      };
+      newMathField.addEventListener('keydown', handleFieldUndo);
+
+      // Focus the math field to place the caret inside it
+      newMathField.focus();
+    };
+
     if (isInsideMathField()) {
-      const mathField = findMathField(selection.anchorNode);
-      if (!mathField) return;
-            
-      // Check if there's already spacing after the math field
-      const nextSibling = mathField.nextSibling;
-      let spaceNode: Node;
-      
-      if (nextSibling && nextSibling.nodeType === Node.TEXT_NODE && 
-          (nextSibling.nodeValue === '\u200B' || nextSibling.nodeValue === ' ')) {
-        // Use existing space node
-        spaceNode = nextSibling;
-      } else {
-        // Create a single space after the math field
-        spaceNode = document.createTextNode(' ');
-      mathField.parentNode?.insertBefore(spaceNode, mathField.nextSibling);
+      // If currently inside a math field, push cursor after it (with spacing) then insert the new one
+      const currentMathField = findMathField(selection.anchorNode);
+      if (!currentMathField) return;
+
+      // Ensure there is at least a zero-width space after current field
+      let spacer = currentMathField.nextSibling;
+      if (!spacer || spacer.nodeType !== Node.TEXT_NODE) {
+        spacer = document.createTextNode('\u200B');
+        currentMathField.parentNode?.insertBefore(spacer, currentMathField.nextSibling);
       }
-      
-      // Insert new math delimiters after the space
-      positionCursorAndInsert(spaceNode, '\\(\\)');
-      initializeMathField(mathField.parentElement);
+      // Position cursor just after the spacer
+      const newRange = document.createRange();
+      newRange.setStartAfter(spacer);
+      newRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+
+      insertMathFieldAtCursor();
     } else {
-      // Capture the current element before insertion
-      const currentElement = selection.anchorNode instanceof HTMLElement ? 
-        selection.anchorNode : selection.anchorNode?.parentElement;
-        
-      document.execCommand('insertText', false, '\\(\\)');
-      
-      // Try to initialize with the captured element first
-      initializeMathField(currentElement || null);
+      // Normal case: just insert at current cursor position
+      insertMathFieldAtCursor();
     }
   }, []);
 
