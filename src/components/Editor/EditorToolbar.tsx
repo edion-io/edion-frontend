@@ -1925,32 +1925,40 @@ const EditorToolbar = ({
     const fragment = document.createDocumentFragment();
     
     // Convert each list item to a paragraph
-    itemData.forEach(data => {
+    const originalListItems = Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[];
+
+    originalListItems.forEach((li, idx) => {
       const paragraph = document.createElement('p');
-      
-      if (!data.html || data.html.trim() === '' || data.html === '<br>' || data.html === '&nbsp;') {
-        paragraph.innerHTML = '<br>';
-      } else {
-        paragraph.innerHTML = data.html;
+
+      // Move (not clone) all child nodes into the new paragraph to preserve live elements like <math-field>
+      while (li.firstChild) {
+        paragraph.appendChild(li.firstChild); // this removes from li and appends to paragraph
       }
-      
-      // Apply indentation
-      if (data.indentLevel && data.indentLevel.trim() !== '' && data.indentLevel !== '0px' && data.indentLevel !== '0') {
-        paragraph.style.paddingLeft = data.indentLevel;
-      } else if (data.paddingLeft && data.paddingLeft.trim() !== '' && data.paddingLeft !== '0px' && data.paddingLeft !== '0') {
-        paragraph.style.paddingLeft = data.paddingLeft;
+
+      // Ensure visibility if paragraph ended up empty
+      if (paragraph.innerHTML.trim() === '') {
+        paragraph.innerHTML = '<br>'; // maintain cursor visibility
       }
-      
+
+      // Restore style data from saved snapshot (indentation, etc.)
+      const data = itemData[idx];
+      if (data) {
+        if (data.indentLevel && data.indentLevel.trim() !== '' && data.indentLevel !== '0px' && data.indentLevel !== '0') {
+          paragraph.style.paddingLeft = data.indentLevel;
+        } else if (data.paddingLeft && data.paddingLeft.trim() !== '' && data.paddingLeft !== '0px' && data.paddingLeft !== '0') {
+          paragraph.style.paddingLeft = data.paddingLeft;
+        }
+      }
+
       // Apply alignment
       if (currentAlign && currentAlign !== 'left' && currentAlign !== 'start') {
         paragraph.style.textAlign = currentAlign;
         paragraph.setAttribute('data-alignment-fixed', 'true');
       } else {
-        // If the list had left alignment (or no explicit alignment), ensure the paragraph reflects this
         paragraph.style.textAlign = 'left';
         paragraph.setAttribute('data-alignment-fixed', 'true');
       }
-      
+
       fragment.appendChild(paragraph);
     });
     
