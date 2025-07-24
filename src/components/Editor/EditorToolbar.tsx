@@ -574,15 +574,6 @@ const EditorToolbar = ({
         
         hasAnyContentFormatting = foundFormatTags || queryCommandState;
         
-        // Debug content analysis
-        console.log(`[DEBUG] Content analysis details:`, {
-          selectedContentHTML: tempDiv.innerHTML,
-          foundFormatTags,
-          queryCommandState,
-          formatTags,
-          hasAnyContentFormatting
-        });
-        
         // To check for full formatting, we need to see if the entire selection is formatted
         // This is tricky with contentEditable, so we'll use a heuristic:
         // If queryCommandState is true AND we don't find any unformatted text nodes, assume full formatting
@@ -623,31 +614,15 @@ const EditorToolbar = ({
           
           hasFullContentFormatting = !hasUnformattedText;
           
-          console.log(`[DEBUG] Text node analysis:`, {
-            textNodeDetails,
-            hasUnformattedText,
-            hasFullContentFormatting,
-            formatTags
-          });
-          
           // Additional check: if the entire list item content is selected and queryCommandState is true,
           // we should trust queryCommandState more than our tag analysis for full selections
           // BUT only if we don't have unformatted text (mixed formatting case)
           const isFullListItemSelection = isListItemFullySelected(selection) !== null;
-          console.log(`[DEBUG] Override check:`, {
-            isFullListItemSelection,
-            queryCommandState,
-            hasUnformattedText,
-            foundFormatTags,
-            willOverride: isFullListItemSelection && queryCommandState && !hasUnformattedText
-          });
-          
           if (isFullListItemSelection && queryCommandState && !hasUnformattedText) {
             // For full list item selections, if queryCommandState is true AND we don't have unformatted text,
             // trust queryCommandState. The browser might be using inline styles or other formatting methods
             // that our tag-based analysis doesn't detect
             hasFullContentFormatting = true;
-            console.log(`[DEBUG] Applied override: hasFullContentFormatting = true (trusting queryCommandState for full selection with no unformatted text)`);
           }
           
         } else {
@@ -659,7 +634,6 @@ const EditorToolbar = ({
           const isFullListItemSelection = isListItemFullySelected(selection) !== null;
           if (isFullListItemSelection && foundFormatTags) {
             hasFullContentFormatting = true;
-            console.log(`[DEBUG] Override for queryCommandState=false: found format tags in full selection`);
           }
         }
         
@@ -681,14 +655,6 @@ const EditorToolbar = ({
         // Fallback check: if marker is formatted and queryCommandState is true for full selection,
         // assume we should remove formatting even if hasFullContentFormatting is false
         const isFullListItemSelection = isListItemFullySelected(selection) !== null;
-        console.log(`[DEBUG] Fallback override check:`, {
-          hasMarkerFormatting,
-          isFullListItemSelection,
-          queryCommandState,
-          desiredFormattingStateBeforeOverride: desiredFormattingState,
-          willOverride: hasMarkerFormatting && isFullListItemSelection && queryCommandState && desiredFormattingState
-        });
-        
         if (hasMarkerFormatting && isFullListItemSelection && queryCommandState && desiredFormattingState) {
           console.log(`[DEBUG] Fallback override APPLIED: marker formatted + full selection + queryCommandState=true → REMOVE`);
           desiredFormattingState = false; // Override to remove formatting
@@ -714,10 +680,8 @@ const EditorToolbar = ({
         // Apply marker formatting based on desired state
         if (desiredFormattingState) {
           listItem.classList.add(markerClass);
-          console.log(`[DEBUG] Added marker class: ${markerClass}`);
         } else {
           listItem.classList.remove(markerClass);
-          console.log(`[DEBUG] Removed marker class: ${markerClass}`);
         }
         
         // For content formatting, we need to apply the desired state
@@ -727,25 +691,12 @@ const EditorToolbar = ({
           (desiredFormattingState && !hasFullContentFormatting) ||
           (!desiredFormattingState && hasAnyContentFormatting);
         
-        // Debug for remove case
-        if (!desiredFormattingState) {
-          console.log(`[DEBUG] REMOVE ${command} decision:`, {
-            desiredFormattingState,
-            hasFullContentFormatting,
-            hasAnyContentFormatting,
-            needsContentToggle,
-            condition1: desiredFormattingState && !hasFullContentFormatting,
-            condition2: !desiredFormattingState && hasAnyContentFormatting
-          });
-        }
-        
         if (needsContentToggle) {
           // Continue to execCommand below
           
           // Special handling for mixed formatting - if we want to ADD formatting but there's mixed content,
           // we need to handle this more carefully than just using execCommand
           if (desiredFormattingState && hasAnyContentFormatting && !hasFullContentFormatting) {
-            console.log(`[DEBUG] Mixed formatting case: ${command}`);
             // For mixed formatting, we need to:
             // 1. Remove all existing formatting of this type
             // 2. Apply formatting to the entire selection
@@ -757,11 +708,8 @@ const EditorToolbar = ({
                 document.execCommand(command, false);
                 attempts++;
               }
-              console.log(`[DEBUG] Removed existing ${command} formatting in ${attempts} attempts`);
-              
               // Then apply formatting to ensure everything is formatted
-              const result = document.execCommand(command, false);
-              console.log(`[DEBUG] Applied ${command} formatting, result: ${result}`);
+              document.execCommand(command, false);
               
               // Update format states
               updateFormatStates();
@@ -781,7 +729,6 @@ const EditorToolbar = ({
           }
         } else {
           // Update states to reflect the current formatting
-          console.log(`[DEBUG] Skipping content command for ${command} - content already in desired state`);
           switch (command) {
             case 'bold':
               setIsBold(desiredFormattingState);
@@ -880,7 +827,6 @@ const EditorToolbar = ({
     // Execute command for the content (this will handle both marker and content when entire item is selected)
     console.log(`[DEBUG] Executing normal document.execCommand('${command}')`);
     const commandResult = document.execCommand(command, false, value);
-    console.log(`[DEBUG] Command result: ${commandResult}`);
     
     if (!commandResult) {
       // Debug: Check if the browser supports this command
@@ -943,13 +889,16 @@ const EditorToolbar = ({
   };
   
   // Function to determine the current text alignment
-  const getCurrentAlignment = (): TextAlignment => {
+  const getCurrentAlignment = (): TextAlignment => {    
+    console.log('[getCurrentAlignment] --- Alignment Check Start ---');
     if (!editorRef.current) {
+      console.log('[getCurrentAlignment] No editorRef. current:', lastKnownAlignmentRef.current);
       return lastKnownAlignmentRef.current;
     }
     
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) {
+      console.log('[getCurrentAlignment] No selection. current:', lastKnownAlignmentRef.current);
       return lastKnownAlignmentRef.current;
     }
     
@@ -965,6 +914,7 @@ const EditorToolbar = ({
     while (currentNode && currentNode !== editorRef.current) {
       if (currentNode.nodeType === Node.ELEMENT_NODE) {
         const element = currentNode as HTMLElement;
+        console.log(`[getCurrentAlignment] Checking element: <${element.tagName.toLowerCase()}>`, { element, style: element.style.textAlign, computed: window.getComputedStyle(element).textAlign });
         
         // First check for direct inline style (highest priority)
         if (element.style && element.style.textAlign) {
@@ -1197,14 +1147,17 @@ const EditorToolbar = ({
   };
   
   // Update formatting states based on current selection
-  const updateFormatStates = () => {
-    if (!editorHasFocusRef.current) {
+  const updateFormatStates = (force: boolean = false) => {
+    console.log(`[updateFormatStates] Running update. Forced: ${force}, Has Focus: ${editorHasFocusRef.current}`);
+    if (!force && !editorHasFocusRef.current) {
+      console.log('[updateFormatStates] Aborting: editor not focused and not a forced update.');
       return;
     }
     
     const isBullet = isInListType('UL');
     const isNumbered = isInListType('OL');
     const alignment = getCurrentAlignment();
+    console.log(`[updateFormatStates] Detected alignment: "${alignment}"`);
     
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
@@ -1278,10 +1231,13 @@ const EditorToolbar = ({
     setIsBulletList(isBullet);
     setIsNumberedList(isNumbered);
     
-    // Only update alignment if it's different to avoid unnecessary re-renders
-    if (textAlignment !== alignment) {
-      setTextAlignment(alignment);
-    }
+    // Use functional update to ensure we're comparing against the latest state.
+    setTextAlignment(currentAlignment => {
+      if (currentAlignment !== alignment) {
+        return alignment;
+      }
+      return currentAlignment;
+    });
     
     // Update text color - but only if we're not in a list with marker formatting
     // and only if the detected color is significantly different from current
@@ -1398,7 +1354,7 @@ const EditorToolbar = ({
     // Add focus/blur event listeners to track when editor loses/gains focus
     const handleEditorFocus = () => {
       editorHasFocusRef.current = true;
-      updateFormatStates();
+      updateFormatStates(true); // Force update on focus
     };
     
     const handleEditorBlur = () => {
@@ -1409,12 +1365,33 @@ const EditorToolbar = ({
     editorRef.current.addEventListener('focus', handleEditorFocus);
     editorRef.current.addEventListener('blur', handleEditorBlur);
     
+    // When the document is modified (e.g., via undo/redo), ensure the toolbar reflects the new state
+    const handleEditorInput = () => {
+      // Wait until the DOM has settled, then update states (forced)
+      setTimeout(() => updateFormatStates(true), 0);
+    };
+    
+    // Listen for undo/redo key combinations globally to refresh toolbar state even if input event doesn't fire
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey;
+      const isRedo = (e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'z' && e.shiftKey || e.key.toLowerCase() === 'y');
+      if (isUndo || isRedo) {
+        console.log(`[handleKeyDown] ${isUndo ? 'Undo' : 'Redo'} detected.`);
+        setTimeout(() => updateFormatStates(true), 0);
+      }
+    };
+    
+    editorRef.current.addEventListener('input', handleEditorInput);
+    document.addEventListener('keydown', handleKeyDown);
+    
     // Clean up
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('keydown', handleKeyDown);
       editorRef.current?.removeEventListener('mouseup', handleEditorMouseUp);
       editorRef.current?.removeEventListener('focus', handleEditorFocus);
       editorRef.current?.removeEventListener('blur', handleEditorBlur);
+      editorRef.current?.removeEventListener('input', handleEditorInput);
     };
   }, [editorRef]);
   
@@ -2007,38 +1984,51 @@ const EditorToolbar = ({
   const convertBetweenListTypes = (fromType: 'UL' | 'OL', toType: 'UL' | 'OL', context: ListContext, itemData: ListItemData[]) => {
     if (!context.currentList) return;
     
+    console.groupCollapsed(`[convertBetweenListTypes] from ${fromType} to ${toType}`);
+    console.log('Context:', context);
+    console.log('Item Data:', JSON.parse(JSON.stringify(itemData)));
+    console.log('Current List HTML:', context.currentList.outerHTML);
+    console.log('Parent HTML:', (context.currentList.parentNode as HTMLElement)?.outerHTML);
+    
     const alignmentToTransfer = context.currentList.style.textAlign;
     
     disableTransitionsDuring(() => {
-      // When converting lists, we'll manually rebuild to avoid undo issues with math fields.
+      /*
+        Rebuild the list by MOVING (not cloning) existing <li> elements into a new list
+        of the desired type. This preserves the original DOM nodes so the browser's
+        undo stack can correctly restore them without duplicating content.
+      */
+
+      const oldList = context.currentList;
       const newList = document.createElement(toType);
+
+      // Transfer list items by reference (no cloning).
+      while (oldList.firstChild) {
+        newList.appendChild(oldList.firstChild);
+      }
+
+      // Copy alignment/style from old list.
       if (alignmentToTransfer) {
         newList.style.textAlign = alignmentToTransfer;
       }
-      
-      // Apply list classes
+
+      // Copy classes except the old list style class.
+      newList.className = oldList.className;
+      newList.classList.remove('list-disc', 'list-decimal');
       if (toType === 'OL') {
         newList.classList.add('list-decimal');
       } else {
         newList.classList.add('list-disc');
       }
 
-      // Move each list item's content to the new list structure.
-      itemData.forEach(data => {
-        const newItem = document.createElement('li');
-        newItem.innerHTML = data.html; // The content, including math fields, is preserved.
-        
-        // Restore styles, indentation, and marker formatting.
-        if (data.fullStyle) {
-          newItem.setAttribute('style', data.fullStyle);
-        }
-        
-        newList.appendChild(newItem);
-      });
-      
-      // Replace the old list with the new one. This is a single DOM mutation for the undo stack.
-      context.currentList.parentNode?.replaceChild(newList, context.currentList);
-      
+      // Replace list in DOM (single mutation for undo).
+      oldList.parentNode?.replaceChild(newList, oldList);
+
+      // Ensure indentation & marker formatting restored on moved items.
+      const newItems = Array.from(newList.querySelectorAll('li')) as HTMLElement[];
+      restoreIndentationToItems(newItems, itemData);
+      restoreMarkerFormatting(newItems, itemData, toType);
+
       // Restore selection in the first item.
       const selection = window.getSelection();
       const firstItem = newList.querySelector('li');
@@ -2056,6 +2046,8 @@ const EditorToolbar = ({
         editorRef.current.dispatchEvent(event);
       }
     });
+    
+    console.groupEnd();
   };
 
   // Helper function to create new list from text
@@ -2181,14 +2173,13 @@ const EditorToolbar = ({
       return;
     }
 
-    // If in a different list type, convert between types
+    // If in a different list type, convert between types (single DOM mutation to keep undo clean)
     if (context.currentList && context.listType && context.listType !== listType) {
-      // Use selection preservation for list conversion
-      preserveSelectionDuringListOperation(editorRef.current, () => {
-        const itemData = preserveListItemData(Array.from(context.currentList!.querySelectorAll('li')) as HTMLElement[]);
-        convertBetweenListTypes(context.listType!, listType, context, itemData);
-      });
-      
+      const itemData = preserveListItemData(
+        Array.from(context.currentList!.querySelectorAll('li')) as HTMLElement[]
+      );
+      convertBetweenListTypes(context.listType!, listType, context, itemData);
+ 
       updateFormatStates();
       if (editorRef.current) {
         const event = new Event('input', { bubbles: true });
@@ -2203,12 +2194,12 @@ const EditorToolbar = ({
       createNewListFromText(listType, alignmentContext, true); // Skip callback to avoid interference with selection restoration
     });
 
-  // Update format states and trigger content change event
-  updateFormatStates();
-  if (editorRef.current) {
-    const event = new Event('input', { bubbles: true });
-    editorRef.current.dispatchEvent(event);
-  }
+    // Update format states and trigger content change event
+    updateFormatStates();
+    if (editorRef.current) {
+      const event = new Event('input', { bubbles: true });
+      editorRef.current.dispatchEvent(event);
+    }
   };
   
   // Update handleToolbarClick to only prevent default but not force focus
