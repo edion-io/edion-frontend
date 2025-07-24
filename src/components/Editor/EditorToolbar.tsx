@@ -2010,140 +2010,50 @@ const EditorToolbar = ({
     const alignmentToTransfer = context.currentList.style.textAlign;
     
     disableTransitionsDuring(() => {
-      // Convert list type with math field preservation
-      const preserveMathFields = (operation: () => void) => {
-        if (!editorRef.current) return;
-        
-        // Store all math fields and their data before the operation
-        const mathFields = Array.from(editorRef.current.querySelectorAll('math-field'));
-        const mathFieldsData = mathFields.map(field => ({
-          element: field,
-          latex: field.getAttribute('data-latex') || '',
-          value: (field as any).value || '',
-          placeholder: `__MATH_FIELD_${Math.random().toString(36).substr(2, 9)}__`
-        }));
-        
-        // Replace math fields with placeholders
-        mathFieldsData.forEach(data => {
-          const placeholder = document.createTextNode(data.placeholder);
-          data.element.parentNode?.replaceChild(placeholder, data.element);
-        });
-        
-        // Execute the operation
-        operation();
-        
-        // Restore math fields from placeholders
-        setTimeout(() => {
-          mathFieldsData.forEach(data => {
-            const walker = document.createTreeWalker(
-              editorRef.current!,
-              NodeFilter.SHOW_TEXT,
-              null
-            );
-            
-            let textNode: Text | null;
-            while ((textNode = walker.nextNode() as Text)) {
-              if (textNode.nodeValue?.includes(data.placeholder)) {
-                // Replace placeholder with math field
-                const mathField = document.createElement('math-field');
-                mathField.className = 'math-field';
-                mathField.setAttribute('data-latex', data.latex);
-                mathField.setAttribute('value', data.value);
-                mathField.setAttribute('virtual-keyboard-mode', 'manual');
-                mathField.setAttribute('keypress-sound', 'none');
-                mathField.setAttribute('plonk-sound', 'none');
-                
-                // Replace the text node containing the placeholder
-                const newText = textNode.nodeValue.replace(data.placeholder, '');
-                if (newText) {
-                  textNode.nodeValue = newText;
-                  textNode.parentNode?.insertBefore(mathField, textNode);
-                } else {
-                  textNode.parentNode?.replaceChild(mathField, textNode);
-                }
-                
-                // Add event listener
-                mathField.addEventListener('input', () => {
-                  const updatedLatex = (mathField as any).value;
-                  mathField.setAttribute('data-latex', updatedLatex);
-                  if (editorRef.current) {
-                    const event = new Event('input', { bubbles: true });
-                    editorRef.current.dispatchEvent(event);
-                  }
-                });
-                
-                break;
-              }
-            }
-          });
-        }, 0);
-      };
-      
-      preserveMathFields(() => {
-        // Convert list type
-        document.execCommand(fromType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-        document.execCommand(toType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-      });
-      
-      // Find the newly created list
-      const selection = window.getSelection();
-      let newList: HTMLElement | null = null;
-      
-      if (selection?.anchorNode) {
-        let node = selection.anchorNode;
-        while (node && node !== editorRef.current) {
-          if (node.nodeType === Node.ELEMENT_NODE && 
-              ((node as HTMLElement).tagName === 'UL' || (node as HTMLElement).tagName === 'OL')) {
-            newList = node as HTMLElement;
-            break;
-          }
-          node = node.parentNode;
-        }
+      // When converting lists, we'll manually rebuild to avoid undo issues with math fields.
+      const newList = document.createElement(toType);
+      if (alignmentToTransfer) {
+        newList.style.textAlign = alignmentToTransfer;
       }
       
-      if (newList) {
-        // Apply list classes
-        if (toType === 'OL') {
-          newList.classList.add('list-decimal');
-          newList.style.listStyleType = 'decimal';
-        } else {
-          newList.classList.add('list-disc');
-          newList.style.listStyleType = 'disc';
+      // Apply list classes
+      if (toType === 'OL') {
+        newList.classList.add('list-decimal');
+      } else {
+        newList.classList.add('list-disc');
+      }
+
+      // Move each list item's content to the new list structure.
+      itemData.forEach(data => {
+        const newItem = document.createElement('li');
+        newItem.innerHTML = data.html; // The content, including math fields, is preserved.
+        
+        // Restore styles, indentation, and marker formatting.
+        if (data.fullStyle) {
+          newItem.setAttribute('style', data.fullStyle);
         }
         
-        // Apply alignment if needed
-        if (alignmentToTransfer) {
-          applyListAlignment(newList, alignmentToTransfer, toType);
-        } else {
-          // Check if we should apply current alignment from toolbar state
-          const currentToolbarAlignment = getCurrentAlignment();
-          
-          if (currentToolbarAlignment !== 'left') {
-            applyListAlignment(newList, currentToolbarAlignment, toType);
-          }
-        }
-        
-        const newItems = Array.from(newList.querySelectorAll('li')) as HTMLElement[];
-        
-        // Restore content and formatting
-        restoreIndentationToItems(newItems, itemData);
-        restoreMarkerFormatting(newItems, itemData, toType);
-        
-        // Force immediate style application to prevent visual delays
-        newItems.forEach((item) => {
-          void item.offsetHeight;
-          void item.offsetWidth;
-        });
-        
-        // Force reflow
-        newList.offsetHeight;
-        newList.offsetWidth;
-        
-        // Update content
-        if (editorRef.current) {
-          const event = new Event('input', { bubbles: true });
-          editorRef.current.dispatchEvent(event);
-        }
+        newList.appendChild(newItem);
+      });
+      
+      // Replace the old list with the new one. This is a single DOM mutation for the undo stack.
+      context.currentList.parentNode?.replaceChild(newList, context.currentList);
+      
+      // Restore selection in the first item.
+      const selection = window.getSelection();
+      const firstItem = newList.querySelector('li');
+      if (selection && firstItem) {
+        const newRange = document.createRange();
+        newRange.setStart(firstItem, 0);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+
+      // Trigger an input event to notify of the content change.
+      if (editorRef.current) {
+        const event = new Event('input', { bubbles: true, cancelable: true });
+        editorRef.current.dispatchEvent(event);
       }
     });
   };
@@ -2177,80 +2087,12 @@ const EditorToolbar = ({
       currentElementForIndentSearch = currentElementForIndentSearch.parentNode;
     }
     
-    // Create the list with math field preservation
-    const preserveMathFields = (operation: () => void) => {
-      if (!editorRef.current) return;
-      
-      // Store all math fields and their data before the operation
-      const mathFields = Array.from(editorRef.current.querySelectorAll('math-field'));
-      const mathFieldsData = mathFields.map(field => ({
-        element: field,
-        latex: field.getAttribute('data-latex') || '',
-        value: (field as any).value || '',
-        placeholder: `__MATH_FIELD_${Math.random().toString(36).substr(2, 9)}__`
-      }));
-      
-      // Replace math fields with placeholders
-      mathFieldsData.forEach(data => {
-        const placeholder = document.createTextNode(data.placeholder);
-        data.element.parentNode?.replaceChild(placeholder, data.element);
-      });
-      
-      // Execute the operation
-      operation();
-      
-      // Restore math fields from placeholders
-      setTimeout(() => {
-        mathFieldsData.forEach(data => {
-          const walker = document.createTreeWalker(
-            editorRef.current!,
-            NodeFilter.SHOW_TEXT,
-            null
-          );
-          
-          let textNode: Text | null;
-          while ((textNode = walker.nextNode() as Text)) {
-            if (textNode.nodeValue?.includes(data.placeholder)) {
-              // Replace placeholder with math field
-              const mathField = document.createElement('math-field');
-              mathField.className = 'math-field';
-              mathField.setAttribute('data-latex', data.latex);
-              mathField.setAttribute('value', data.value);
-              mathField.setAttribute('virtual-keyboard-mode', 'manual');
-              mathField.setAttribute('keypress-sound', 'none');
-              mathField.setAttribute('plonk-sound', 'none');
-              
-              // Replace the text node containing the placeholder
-              const newText = textNode.nodeValue.replace(data.placeholder, '');
-              if (newText) {
-                textNode.nodeValue = newText;
-                textNode.parentNode?.insertBefore(mathField, textNode);
-              } else {
-                textNode.parentNode?.replaceChild(mathField, textNode);
-              }
-              
-              // Add event listener
-              mathField.addEventListener('input', () => {
-                const updatedLatex = (mathField as any).value;
-                mathField.setAttribute('data-latex', updatedLatex);
-                if (editorRef.current) {
-                  const event = new Event('input', { bubbles: true });
-                  editorRef.current.dispatchEvent(event);
-                }
-              });
-              
-              break;
-            }
-          }
-        });
-      }, 0);
-    };
-    
-    preserveMathFields(() => {
-      // Create the list
-      document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
-    });
-    
+    // This operation needs to be undo-friendly. Using execCommand is the simplest way.
+    // Math fields will be handled by the browser's default behavior for wrapping content.
+    // The complexity of preserving/restoring them manually is high and brittle.
+    document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+
+    // Post-command adjustments are still needed for styling and indentation.
     // Find the new list
     const newSelection = window.getSelection();
     let newListElement: HTMLElement | null = null;
@@ -2356,10 +2198,10 @@ const EditorToolbar = ({
     }
 
       // Not in a list, create a new one - use selection preservation to maintain text selection
-  const alignmentContext = detectAlignmentContext();
-  preserveSelectionDuringListOperation(editorRef.current, () => {
-    createNewListFromText(listType, alignmentContext, true); // Skip callback to avoid cursor positioning that interferes with selection restoration
-  });
+    const alignmentContext = detectAlignmentContext();
+    preserveSelectionDuringListOperation(editorRef.current, () => {
+      createNewListFromText(listType, alignmentContext, true); // Skip callback to avoid interference with selection restoration
+    });
 
   // Update format states and trigger content change event
   updateFormatStates();

@@ -244,7 +244,7 @@ export const useInlineMath = () => {
 
     // Ensure we are inside a suitable container (paragraph or the editor root)
     const container = range.startContainer;
-    if (container.nodeType === Node.ELEMENT_NODE &&
+    if (container.nodeType === Node.ELEMENT_NODE && 
         (container as HTMLElement).getAttribute('contenteditable') === 'true' &&
         (container as HTMLElement).childNodes.length === 0) {
       // If editor is empty, create a paragraph to hold the math field
@@ -292,7 +292,7 @@ export const useInlineMath = () => {
       // If currently inside a math field, push cursor after it (with spacing) then insert the new one
       const currentMathField = findMathField(selection.anchorNode);
       if (!currentMathField) return;
-
+            
       // Ensure there is at least a zero-width space after current field
       let spacer = currentMathField.nextSibling;
       if (!spacer || spacer.nodeType !== Node.TEXT_NODE) {
