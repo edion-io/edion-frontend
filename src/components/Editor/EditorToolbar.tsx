@@ -1768,7 +1768,7 @@ const EditorToolbar = ({
       if (index < itemData.length) {
         const originalData = itemData[index];
         
-        item.innerHTML = originalData.html;
+        // item.innerHTML = originalData.html;
         
         let indentLevelSuccessfullySet = false;
 
@@ -2173,19 +2173,32 @@ const EditorToolbar = ({
       return;
     }
 
-    // If in a different list type, convert between types (single DOM mutation to keep undo clean)
+    // If in a different list type, convert between types
     if (context.currentList && context.listType && context.listType !== listType) {
-      const itemData = preserveListItemData(
-        Array.from(context.currentList!.querySelectorAll('li')) as HTMLElement[]
-      );
-      convertBetweenListTypes(context.listType!, listType, context, itemData);
- 
-      updateFormatStates();
-      if (editorRef.current) {
-        const event = new Event('input', { bubbles: true });
-        editorRef.current.dispatchEvent(event);
-      }
-      return;
+        // First, save the styling and indentation from the old list items.
+        const itemData = preserveListItemData(Array.from(context.currentList.querySelectorAll('li')) as HTMLElement[]);
+
+        // Use **one** execCommand to convert list types so that the browser
+        // registers a single undo step (bullet → numbered or vice-versa).
+        // Calling the opposite list command automatically converts the list
+        // without an intermediate paragraph state.
+        document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+        
+        // After conversion, find the new list and reapply the preserved styles.
+        const newContext = detectListContext();
+        if (newContext.currentList) {
+            const newItems = Array.from(newContext.currentList.querySelectorAll('li')) as HTMLElement[];
+            restoreIndentationToItems(newItems, itemData);
+            restoreMarkerFormatting(newItems, itemData, listType);
+            applyListAlignment(newContext.currentList, newContext.currentList.style.textAlign || 'left', listType);
+        }
+
+        updateFormatStates();
+        if (editorRef.current) {
+            const event = new Event('input', { bubbles: true });
+            editorRef.current.dispatchEvent(event);
+        }
+        return;
     }
 
       // Not in a list, create a new one - use selection preservation to maintain text selection
