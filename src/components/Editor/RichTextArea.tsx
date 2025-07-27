@@ -1351,7 +1351,13 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           
           // If we're at the start of a list item
           if (isAtStart) {
-                      // Add special handling for Shift+Backspace to directly remove list formatting
+            // If there's a selection, do not trigger any custom list-handling logic.
+            // Let the default backspace behavior (deleting the selection) proceed.
+            if (!range.collapsed) {
+              return;
+            }
+            
+            // Add special handling for Shift+Backspace to directly remove list formatting
             if (e.shiftKey && list) {
               // Remove the list formatting but keep the content
             
@@ -1783,7 +1789,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
                        element.innerHTML === '<br>' ||
                        element.innerHTML === '';
         
-        if (isEmpty && !element.querySelector('br, math-field, img, table')) {
+        if (isEmpty && !element.querySelector('math-field, img, table')) {
           // Ensure it has a non-breaking space for cursor visibility
           if (!textContent.includes('\u00A0')) {
             element.innerHTML = '\u00A0'; // Non-breaking space
