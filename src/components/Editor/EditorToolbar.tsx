@@ -2136,7 +2136,20 @@ const EditorToolbar = ({
       if (alignmentContext.currentAlignment !== 'left') {
         applyListAlignment(newListElement, alignmentContext.currentAlignment, listType);
       }
-      
+
+      // --- Fix: ensure caret is visible in an empty newly-created list item ---
+      const firstItemText = firstItem.textContent || '';
+      const firstItemIsEmpty = !firstItemText.trim() ||
+        firstItemText === '\u00A0' ||
+        firstItemText === '\u200B' ||
+        firstItem.innerHTML === '<br>' ||
+        firstItem.innerHTML === '';
+
+      if (firstItemIsEmpty) {
+        firstItem.innerHTML = '\u00A0';
+      }
+      // ---------------------------------------------------------------------
+
       // Trigger callback for all lists to ensure proper cursor positioning
       if (!skipNewListCallback) {
         onNewListCreated?.();
@@ -2182,15 +2195,25 @@ const EditorToolbar = ({
         // registers a single undo step (bullet → numbered or vice-versa).
         // Calling the opposite list command automatically converts the list
         // without an intermediate paragraph state.
-        document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+        const command = listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList';
+        const commandSuccess = document.execCommand(command, false);
+
+        if (!commandSuccess) {
+            console.warn(`[EditorToolbar] execCommand '${command}' failed during list conversion.`);
+        }
         
         // After conversion, find the new list and reapply the preserved styles.
         const newContext = detectListContext();
-        if (newContext.currentList) {
+        if (newContext.currentList && newContext.listType === listType) {
             const newItems = Array.from(newContext.currentList.querySelectorAll('li')) as HTMLElement[];
             restoreIndentationToItems(newItems, itemData);
             restoreMarkerFormatting(newItems, itemData, listType);
             applyListAlignment(newContext.currentList, newContext.currentList.style.textAlign || 'left', listType);
+        } else if (commandSuccess) {
+            // Only warn if the command succeeded but the context is wrong
+            console.warn(`List conversion to ${listType} executed, but the resulting DOM is not as expected.`, {
+                detectedContext: newContext
+            });
         }
 
         updateFormatStates();
