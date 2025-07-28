@@ -75,6 +75,12 @@ export const useInlineMath = () => {
    * Remove a math field and clean up spacing to maintain single cursor position
    */
   const removeMathField = (mathField: HTMLElement) => {
+    // Clean up event listener to prevent memory leaks
+    if ((mathField as any)._undoHandler) {
+      mathField.removeEventListener('keydown', (mathField as any)._undoHandler);
+      delete (mathField as any)._undoHandler;
+    }
+
     const nextSibling = mathField.nextSibling;
     const prevSibling = mathField.previousSibling;
     
@@ -245,19 +251,19 @@ export const useInlineMath = () => {
 
     // Check if we are inside an empty list item
     let listItem = null;
-    let tempNode = container;
-    while (tempNode) {
-      if ((tempNode as HTMLElement).tagName === 'LI') {
+    let tempNode: Node | null = container;
+    while (tempNode && tempNode !== document.documentElement) {
+      if (tempNode.nodeType === Node.ELEMENT_NODE &&
+          (tempNode as HTMLElement).tagName === 'LI') {
         listItem = tempNode as HTMLElement;
         break;
       }
-      if ((tempNode as HTMLElement) === document.body) break;
       tempNode = tempNode.parentNode;
     }
 
     const isInsideEmptyListItem =
       listItem &&
-      (listItem.textContent || '').trim() === '' &&
+      (listItem.textContent || '').replace(/\s/g, '') === '' &&
       !listItem.querySelector('math-field');
 
     // If in an empty list item, ensure the math field is inserted within it
@@ -292,8 +298,16 @@ export const useInlineMath = () => {
       if (!selection || !selection.rangeCount) return;
 
       const range = selection.getRangeAt(0);
-      const fragment = range.createContextualFragment(mathFieldHTML);
-      const newMathField = fragment.querySelector('math-field') as HTMLElement;
+      let fragment: DocumentFragment;
+      let newMathField: HTMLElement | null = null;
+      
+      try {
+        fragment = range.createContextualFragment(mathFieldHTML);
+        newMathField = fragment.querySelector('math-field') as HTMLElement;
+      } catch (error) {
+        console.error('Failed to create math field fragment:', error);
+        return;
+      }
 
       range.deleteContents();
       range.insertNode(fragment);
@@ -312,10 +326,17 @@ export const useInlineMath = () => {
           // Move focus back to the editor then invoke native undo
           if (editor) {
             editor.focus();
-            document.execCommand('undo');
+            // Try modern approach first, fallback to execCommand
+            if (editor.isContentEditable && 'undoManager' in editor) {
+              // Future: Use UndoManager API when widely supported
+              document.execCommand('undo');
+            } else {
+              document.execCommand('undo');
+            }
           }
         }
       };
+      (newMathField as any)._undoHandler = handleFieldUndo;
       newMathField.addEventListener('keydown', handleFieldUndo);
 
       // Focus the math field to place the caret inside it
@@ -356,29 +377,27 @@ export const useInlineMath = () => {
     if (target.tagName === 'MATH-FIELD') {
       // Handle Enter key to create a new line after the math block
       if (event.key === 'Enter') {
-        console.log('Enter pressed in math field');
-        console.log('Target element:', target);
-        console.log('Parent element:', target.parentElement);
+        
         
         event.preventDefault();
         
         // Find the parent paragraph or appropriate container
         let container = target.parentElement;
-        console.log('Container before new paragraph:', container);
+        
         
         // Create a new paragraph after the math field's container
         const newParagraph = document.createElement('p');
         newParagraph.innerHTML = '&#8203;'; // Zero-width space to ensure paragraph has content
-        console.log('Created new paragraph:', newParagraph);
+        
         
         // Insert the new paragraph after the container
         if (container) {
-          console.log('Container exists, attempting to insert new paragraph');
+          
           if (container.nextSibling) {
-            console.log('Inserting before next sibling:', container.nextSibling);
+            
             container.parentNode?.insertBefore(newParagraph, container.nextSibling);
           } else {
-            console.log('No next sibling, appending to parent');
+            
             container.parentNode?.appendChild(newParagraph);
           }
           
@@ -388,10 +407,10 @@ export const useInlineMath = () => {
           
           // Position at the start of the text content
           if (newParagraph.firstChild) {
-            console.log('Setting range to first child of new paragraph');
+            
             range.setStart(newParagraph.firstChild, 0);
           } else {
-            console.log('Setting range to new paragraph itself');
+            
             range.setStart(newParagraph, 0);
           }
           range.collapse(true);
@@ -413,11 +432,11 @@ export const useInlineMath = () => {
           // Focus the editor
           const editor = document.querySelector('[contenteditable="true"]') as HTMLElement;
           if (editor) {
-            console.log('Focusing editor');
+            
             editor.focus();
           }
         } else {
-          console.log('No container found for math field');
+          
         }
         return;
       }
@@ -425,8 +444,7 @@ export const useInlineMath = () => {
       // Handle backspace and delete for empty math fields
       if (event.key === 'Backspace' || event.key === 'Delete') {
         const mathField = target as any;
-        console.log('Math field value:', mathField.value);
-        console.log('Math field data-latex:', mathField.getAttribute('data-latex'));
+        
         
         // Only proceed if the field is empty
         if (!mathField.value) {
@@ -434,7 +452,7 @@ export const useInlineMath = () => {
           
           // If this is the first delete on an empty field
           if (emptyMathFieldRef.current !== mathField) {
-            console.log('Math field is empty, press backspace/delete again to remove');
+            
             emptyMathFieldRef.current = mathField;
             
             // Add a visual indicator that the field is pending deletion
@@ -454,7 +472,7 @@ export const useInlineMath = () => {
             mathField.addEventListener('input', clearPendingState);
           } else {
             // This is the second delete, remove the field
-            console.log('Removing empty math field after second delete');
+            
             removeMathField(mathField);
             emptyMathFieldRef.current = null;
           }

@@ -170,7 +170,6 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       const range = selection.getRangeAt(0);
       const target = e.target as HTMLElement;
       
-      console.log(`[MATH NAV] ${e.key} pressed, target:`, target.tagName, target.classList.toString());
       
       // Special handler for moving left from a space (regular or ZWS) into a math field
       if (e.key === 'ArrowLeft' &&
@@ -223,34 +222,28 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         // Check if we're just before a math field
         let nextNode: Node | null = null;
         
-        console.log(`[MATH NAV] Right arrow - analyzing position:`, {
-          containerType: range.startContainer.nodeType === Node.TEXT_NODE ? 'TEXT_NODE' : 'ELEMENT_NODE',
-          startOffset: range.startOffset,
-          textLength: range.startContainer.textContent?.length,
-          textContent: JSON.stringify(range.startContainer.textContent)
-        });
         
         // If we're at the end of a text node, look for next sibling
         if (range.startOffset === (range.startContainer.textContent?.length || 0)) {
           nextNode = range.startContainer.nextSibling;
-          console.log(`[MATH NAV] At end of text node, nextSibling:`, nextNode?.nodeName, (nextNode as HTMLElement)?.classList?.toString());
+          
         }
         // If we're at an element boundary, check the next node at that position
         else if (range.startContainer.nodeType === Node.ELEMENT_NODE) {
           nextNode = (range.startContainer as Element).childNodes[range.startOffset];
-          console.log(`[MATH NAV] At element boundary, childNode:`, nextNode?.nodeName, (nextNode as HTMLElement)?.classList?.toString());
+          
         }
         
         // If we haven't found a next node yet, try parent's next sibling
         if (!nextNode && range.startContainer.parentNode) {
           nextNode = range.startContainer.parentNode.nextSibling;
-          console.log(`[MATH NAV] Checking parent's nextSibling:`, nextNode?.nodeName, (nextNode as HTMLElement)?.classList?.toString());
+          
         }
         
         // Check if the next node is a math field
         if (nextNode && nextNode instanceof HTMLElement && nextNode.classList.contains('math-field')) {
           mathField = nextNode;
-          console.log(`[MATH NAV] Found math field to enter:`, mathField);
+          
         }
       } else if (e.key === 'ArrowLeft') {
         // Check if we're just after a math field
@@ -297,23 +290,12 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
                                      (range.startContainer.textContent === '\u200B' || range.startContainer.textContent === ' ') &&
                                      range.startOffset === range.startContainer.textContent.length;
 
-        console.log(`[MATH NAV] Edge detection:`, {
-          direction: e.key,
-          isAtStart,
-          isAtEnd,
-          isAtElementBoundary,
-          inSpaceNodeForLeft,
-          inSpaceNodeForRight,
-          textContent: JSON.stringify(range.startContainer.textContent),
-          offset: range.startOffset,
-          willEnterMathField: (e.key === 'ArrowRight' && (isAtEnd || isAtElementBoundary || inSpaceNodeForRight)) || 
-                             (e.key === 'ArrowLeft' && (isAtStart || isAtElementBoundary || inSpaceNodeForLeft))
-        });
+        
 
         if ((e.key === 'ArrowRight' && (isAtEnd || isAtElementBoundary || inSpaceNodeForRight)) || 
             (e.key === 'ArrowLeft' && (isAtStart || isAtElementBoundary || inSpaceNodeForLeft))) {
           e.preventDefault();
-          console.log(`[MATH NAV] Entering math field from outside`);
+          
           
           // Focus the math field - MathLive will automatically position the cursor
           // at the start when moving right, and at the end when moving left
@@ -328,7 +310,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         const initialPosition = mathField.position;
         const mathValue = mathField.value;
 
-        console.log(`[MATH DEBUG] Key: ${e.key} inside math-field. Pos: ${initialPosition}, Value: "${mathValue}"`);
+        
         
         // Use MathLive's built-in edge detection for complex expressions
         // Try to move in the direction first, then check if we're still in the same position
@@ -365,27 +347,15 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         const isAtRightEdge = e.key === 'ArrowRight' && isAtEdge;
         const isAtLeftEdge = e.key === 'ArrowLeft' && isAtEdge;
         
-        console.log(`[MATH NAV] INSIDE math field:`, {
-          direction: e.key,
-          currentPosition: initialPosition,
-          mathValue: JSON.stringify(mathField.value),
-          isAtRightEdge,
-          isAtLeftEdge,
-          isAtEdge,
-          edgeDetectionMethod: 'MathLive movement test'
-        });
         
         if (isAtRightEdge || isAtLeftEdge) {
-          console.log(`[MATH NAV] EXITING math field - checking for adjacent math field...`);
+          
           e.preventDefault();
           
           // Find the adjacent node
           const adjacentNode = e.key === 'ArrowRight' ? target.nextSibling : target.previousSibling;
           
-          console.log(`[MATH NAV] Adjacent node:`, {
-            nodeType: adjacentNode?.nodeType,
-            nodeName: adjacentNode?.nodeName
-          });
+          
           
           if (adjacentNode) {
             // Always position cursor in the adjacent space first
@@ -394,11 +364,11 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
               // Position cursor at the edge of the text node that's closest to the math field
               if (e.key === 'ArrowRight') {
                 newRange.setStart(adjacentNode, 0);
-                console.log(`[MATH NAV] Positioned at START of adjacent text node, offset: 0`);
+                
               } else {
                 const offset = adjacentNode.textContent!.length;
                 newRange.setStart(adjacentNode, offset);
-                console.log(`[MATH NAV] Positioned at END of adjacent text node, offset: ${offset}`);
+                
               }
             } else {
               // For other nodes, position at their edge closest to the math field
@@ -409,16 +379,16 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
                   (adjacentNode as Element).childNodes.length : 0;
                 newRange.setStart(adjacentNode, childCount);
               }
-              console.log(`[MATH NAV] Positioned at edge of non-text node`);
+              
             }
             newRange.collapse(true);
             
             // Apply the new selection
             selection.removeAllRanges();
             selection.addRange(newRange);
-            console.log(`[MATH NAV] New cursor position applied`);
+            
           } else {
-            console.log(`[MATH NAV] No adjacent node found, creating new text node`);
+            
             // Create a new text node if needed
             const textNode = document.createTextNode('\u00A0'); // Use non-breaking space for visibility
             if (e.key === 'ArrowRight') {
@@ -437,7 +407,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           return; // Stop further event handling
         } else {
           // If we're inside a math field but not at the exit condition, don't process the "entering math field" logic
-          console.log(`[MATH NAV] Inside math field, not at exit condition - allowing normal navigation`);
+          
           return;
         }
       }
@@ -902,7 +872,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           }
         } else {
           // If we're inside a math field but not exiting, don't process the "entering math field" logic
-          console.log(`[MATH NAV] Inside math field, not at exit condition - allowing normal navigation`);
+          
           return;
         }
       }

@@ -49,7 +49,6 @@ const Header: React.FC<HeaderProps> = ({ userSettings: propUserSettings, setUser
 
   const handleHistoryAction = (chatId: string) => {
     if (chatId !== '') {
-      console.log(`Selected chat with ID: ${chatId}`);
       navigate('/chat', { state: { selectedChatId: chatId } });
     }
   };

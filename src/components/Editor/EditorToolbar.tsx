@@ -656,7 +656,6 @@ const EditorToolbar = ({
         // assume we should remove formatting even if hasFullContentFormatting is false
         const isFullListItemSelection = isListItemFullySelected(selection) !== null;
         if (hasMarkerFormatting && isFullListItemSelection && queryCommandState && desiredFormattingState) {
-          console.log(`[DEBUG] Fallback override APPLIED: marker formatted + full selection + queryCommandState=true → REMOVE`);
           desiredFormattingState = false; // Override to remove formatting
         }
         
@@ -825,7 +824,6 @@ const EditorToolbar = ({
     }
 
     // Execute command for the content (this will handle both marker and content when entire item is selected)
-    console.log(`[DEBUG] Executing normal document.execCommand('${command}')`);
     const commandResult = document.execCommand(command, false, value);
     
     if (!commandResult) {
@@ -890,15 +888,12 @@ const EditorToolbar = ({
   
   // Function to determine the current text alignment
   const getCurrentAlignment = (): TextAlignment => {    
-    console.log('[getCurrentAlignment] --- Alignment Check Start ---');
     if (!editorRef.current) {
-      console.log('[getCurrentAlignment] No editorRef. current:', lastKnownAlignmentRef.current);
       return lastKnownAlignmentRef.current;
     }
     
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) {
-      console.log('[getCurrentAlignment] No selection. current:', lastKnownAlignmentRef.current);
       return lastKnownAlignmentRef.current;
     }
     
@@ -1148,16 +1143,13 @@ const EditorToolbar = ({
   
   // Update formatting states based on current selection
   const updateFormatStates = (force: boolean = false) => {
-    console.log(`[updateFormatStates] Running update. Forced: ${force}, Has Focus: ${editorHasFocusRef.current}`);
     if (!force && !editorHasFocusRef.current) {
-      console.log('[updateFormatStates] Aborting: editor not focused and not a forced update.');
       return;
     }
     
     const isBullet = isInListType('UL');
     const isNumbered = isInListType('OL');
     const alignment = getCurrentAlignment();
-    console.log(`[updateFormatStates] Detected alignment: "${alignment}"`);
     
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
@@ -1376,7 +1368,6 @@ const EditorToolbar = ({
       const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey;
       const isRedo = (e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'z' && e.shiftKey || e.key.toLowerCase() === 'y');
       if (isUndo || isRedo) {
-        console.log(`[handleKeyDown] ${isUndo ? 'Undo' : 'Redo'} detected.`);
         setTimeout(() => updateFormatStates(true), 0);
       }
     };
@@ -1984,12 +1975,6 @@ const EditorToolbar = ({
   const convertBetweenListTypes = (fromType: 'UL' | 'OL', toType: 'UL' | 'OL', context: ListContext, itemData: ListItemData[]) => {
     if (!context.currentList) return;
     
-    console.groupCollapsed(`[convertBetweenListTypes] from ${fromType} to ${toType}`);
-    console.log('Context:', context);
-    console.log('Item Data:', JSON.parse(JSON.stringify(itemData)));
-    console.log('Current List HTML:', context.currentList.outerHTML);
-    console.log('Parent HTML:', (context.currentList.parentNode as HTMLElement)?.outerHTML);
-    
     const alignmentToTransfer = context.currentList.style.textAlign;
     
     disableTransitionsDuring(() => {
@@ -2047,7 +2032,6 @@ const EditorToolbar = ({
       }
     });
     
-    console.groupEnd();
   };
 
   // Helper function to create new list from text

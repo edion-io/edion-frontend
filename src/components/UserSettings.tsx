@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Lock, Mail, Shield, Check, RefreshCw } from 'lucide-react';
 import { UserSettings as UserSettingsType } from '../types';
 import { Switch } from "@/components/ui/switch";
@@ -53,6 +53,8 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
   // We'll use the original settings as a reference so we can revert if needed
   const originalDarkMode = settings.darkMode;
 
+  const tabIndicatorRef = useRef<HTMLDivElement>(null);
+  const preferencesContentRef = useRef<HTMLDivElement>(null);
 
 
   // Apply dark mode in real-time when the toggle changes
@@ -175,9 +177,13 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     show2FADisabledToast();
   };
 
-  const handleTabClick = (e: React.MouseEvent) => {
-    console.log('Tab container clicked');
-    e.stopPropagation();
+  const handleTabClick = (tabId: string) => {
+    
+    // Animate tab indicator
+    const tabElement = document.getElementById(`tab-${tabId}`);
+    if (tabElement && tabIndicatorRef.current) {
+      
+    }
   };
 
   const handlePreferencesTabClick = (e: React.MouseEvent) => {
@@ -505,7 +511,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
                             <div className="flex justify-center my-4">
                               <div className="p-2 bg-white rounded-lg">
                                 <img
-                                  src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIQAAACECAYAAABRRIOnAAAAAklEQVR4AewaftIAAAOPSURBVO3BQY4kRxIEQdNA/f/Lun0cPAqodoaHpGz8QWb+g8z8hcz8hcz8hcz8hcz8hcz8xcvLSMhPUjcJU3WT8CR1kzAJnzRJ+Enq3rwcZOYvZOYvZOYvXj6s0jcJm4QndVLdSd0kTOo2CZuETcKTqk3CJ6n7ps3LQWb+Qmb+Qmb+4uWHJdypuwl5UrVJmNRtEiZ1k3Cn7knCT1L3JOEnvXk5yMxfyMxfyMxfvPxPkzAJk7pJ3UnVJEzqJmFStwnbJPw/efNykJm/kJm/kJm/ePnPJEzqTuom4SRhUjcJP6n6SdV/yZuXg8z8hcz8hcz8xcsPq/4kdZMwCU+qJmGTsEl4kjAJd+qeVD1J+Jd583KQmb+Qmb+Qmb94+bAk4U7dJ6mbhDt1k3CnbhKeJJxU3ak7SdhUbRK+6c3LQWZ+X2Z+X2b+4uVlEqZK3SZhUjcJk7AJk7qbhEnCpuqbhE3CSdUm4aRqEjYJJ1UnVT/pzctBZv5CZv5CZv5CZv5CZv5CZv5CZv7i5WWlaptyp+4k4U7dJGwSTuomYVI3CZMwqdokPEl4UrWp+qRN1SZhU/VNb14OMvMXMvMXMvMXLz8sYVI3CZuEO3VPEu7UTcJJ1SZhExKqTqo2CZOwqZqESXhS9U1vXg4y8xcy8xcy8xcvLwl3qp4kbBJOEp5UTcKm6knCpmqTMKm7STipOkk4qZqEJ1WbhDtVn/Tm5SAzfyEzfyEzf/HyZarUTcIm4UnVJNypm4RNOJGQJ1V3Em4S7lSdVG2qvunNy0Fm/kJm/kJm/uLllyV8k7oTCXnSkzYJk7Cp2iScJJxU3al6knAn4UnVJNyp+qQ3LweZ+QuZ+QuZ+YuXl5GQSd0kbBI2VSdVk3CnbhKeJNxJeJIwqZuETdW/7M3LQWZ+X2Z+X2b+4uVlJWFTNQk/Sd2ThEndk4STqjtVk3Cn6qRqU7VJuJNwp2pTdafqm968HGTmL2TmL2TmL15eRkJ+krpJOKnahCdVk7CpOkm4SbhTdSfhScKk7k7Vk4Rv0vdJb14OMvMXMvMXMvMXLx9WVd+k7iTh/5m6ScIm4U7dJGwSTqomYVJ3UrVJmNRtEt68HGTmL2TmL2TmL15+WMKdujsJP0ndJEzCScImTBJOqiZhUrdJeJJwU/VNwqTuJ715OcjMX8jMX8jMX7z8H0vYVN1JOKmahEnYhEl4UrVJmNRNwqRuU3WTMKm7SbhTdafqzctBZv5CZv5CZv5CZv5CZv5CZv5CZv5CZv7DfwDUUMniz7jBLQAAAABJRU5ErkJggg=="
+                                  src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIQAAACECAYAAABRRIOnAAAAAklEQVR4AewaftIAAAOPSURBVO3BQY4kRxIEQdNA/f/Lun0cPAqodoaHpGz8QWb+g8z8hcz8hcz8hcz8hcz8hcz8xcvLSMhPUjcJU3WT8CR1kzAJnzRJ+Enq3rwcZOYvZOYvZOYvXj6s0jcJm4QndVLdSd0kTOo2CZuETcKTqk3CJ6n7ps3LQWb+Qmb+Qmb+4uWHJdypuwl5UrVJmNRtEiZ1k3Cn7knCT1L3JOEnvXk5yMxfyMxfyMxfvPxPkzAJk7pJ3UnVJEzqJmFStwnbJPw/efNykJm/kJm/kJm/ePnPJEzqTuom4SRhUjcJP6n6SdV/yZuXg8z8hcz8hcz8xcsPq/4kdZMwCU+qJmGTsEl4kjAJd+qeVD1J+Jd583KQmb+Qmb+Qmb94+bAk4U7dJ6mbhDt1k3CnbhKeJJxU3ak7SdhUbRK+6c3LQWZ+X2Z+X2b+4uVlEqZK3SZhUjcJk7AJk7qbhEnCpuqbhE3CSdUm4aRqEjYJJ1UnVT/pzctBZv5CZv5CZv5CZv5CZv5CZv5CZv7i5WWlaptyp+4k4U7dJGwSTuomYVI3CZMwqdokPEl4UrWp+qRN1SZhU/VNb14OMvMXMvMXMvMXLz8sYVI3CZuEO3VPEu7UTcJJ1SZhExKqTqo2CZOwqZqESXhS9U1vXg4y8xcy8xcy8xcvLwl3qp4kbBJOEp5UTcKm6knCpmqTMKm7STipOkk4qZqEJ1WbhDtVn/Tm5SAzfyEzfyEzf/HyZarUTcIm4UnVJNypm4RNOJGQJ1V3Em4S7lSdVG2qvunNy0Fm/kJm/kJm/uLllyV8k7oTCXnSkzYJk7Cp2iScJJxU3al6knAn4UnVJNyp+qQ3LweZ+QuZ+QuZ+YuXl5GQSd0kbBI2VSdVk3CnbhKeJNxJeJIwqZuETdW/7M3LQWZ+X2Z+X2b+4uVlJWFTNQk/Sd2ThEndk4STqjtVk3Cn6qRqU7VJuJNwp2pTdafqm968HGTmL2TmL2TmL15eRkJ+krpJOKnahCdVk7CpOkm4SbhTdSfhScKk7k7Vk4Rv0vdJb14OMvMXMvMXMvMXLx9WVd+k7iTh/5m6ScIm4U7dJGwSTqomYVJ3UrVJmNRNwqRuU3WTMKm7SbhTdafqzctBZv5CZv5CZv5CZv5CZv5CZv5CZv5CZv7DfwDUUMniz7jBLQAAAABJRU5ErkJggg=="
                                   alt="QR Code for 2FA"
                                   className="w-48 h-48"
                                 />
@@ -624,8 +630,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
                 value="profile" 
                 className="space-y-4"
                 onClick={(e) => {
-                  console.log('Profile content clicked');
-                  e.stopPropagation();
+                  
                 }}
               >
                 <TabContent activeTab="profile" />
@@ -635,8 +640,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
                 value="security" 
                 className="space-y-4"
                 onClick={(e) => {
-                  console.log('Security content clicked');
-                  e.stopPropagation();
+                  
                 }}
               >
                 <TabContent activeTab="security" />
@@ -646,8 +650,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
                 value="notifications" 
                 className="space-y-4"
                 onClick={(e) => {
-                  console.log('Notifications content clicked');
-                  e.stopPropagation();
+                  
                 }}
               >
                 <div className="space-y-6">
