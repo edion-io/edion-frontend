@@ -241,12 +241,38 @@ export const useInlineMath = () => {
     if (!selection || !selection.rangeCount) return;
 
     const range = selection.getRangeAt(0);
-
-    // Ensure we are inside a suitable container (paragraph or the editor root)
     const container = range.startContainer;
-    if (container.nodeType === Node.ELEMENT_NODE && 
-        (container as HTMLElement).getAttribute('contenteditable') === 'true' &&
-        (container as HTMLElement).childNodes.length === 0) {
+
+    // Check if we are inside an empty list item
+    let listItem = null;
+    let tempNode = container;
+    while (tempNode) {
+      if ((tempNode as HTMLElement).tagName === 'LI') {
+        listItem = tempNode as HTMLElement;
+        break;
+      }
+      if ((tempNode as HTMLElement) === document.body) break;
+      tempNode = tempNode.parentNode;
+    }
+
+    const isInsideEmptyListItem =
+      listItem &&
+      (listItem.textContent || '').trim() === '' &&
+      !listItem.querySelector('math-field');
+
+    // If in an empty list item, ensure the math field is inserted within it
+    if (isInsideEmptyListItem) {
+      // Clear the list item's content (e.g., <br> or &nbsp;)
+      listItem.innerHTML = '';
+      range.setStart(listItem, 0);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else if (
+      container.nodeType === Node.ELEMENT_NODE &&
+      (container as HTMLElement).getAttribute('contenteditable') === 'true' &&
+      (container as HTMLElement).childNodes.length === 0
+    ) {
       // If editor is empty, create a paragraph to hold the math field
       const paragraph = document.createElement('p');
       (container as HTMLElement).appendChild(paragraph);
@@ -256,30 +282,38 @@ export const useInlineMath = () => {
       selection.addRange(range);
     }
 
-    // HTML snippet for an empty MathLive field followed by a zero-width space so the caret can exit the field later
+    // HTML snippet for an empty MathLive field followed by a zero-width space
     const mathFieldHTML =
       '<math-field class="math-field" data-latex="" value="" virtual-keyboard-mode="manual" keypress-sound="none" plonk-sound="none"></math-field>' +
       '\u200B';
 
     const insertMathFieldAtCursor = () => {
-      // Insert HTML (math-field + zero-width space) at the caret
-      document.execCommand('insertHTML', false, mathFieldHTML);
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      const fragment = range.createContextualFragment(mathFieldHTML);
+      const newMathField = fragment.querySelector('math-field') as HTMLElement;
+
+      range.deleteContents();
+      range.insertNode(fragment);
+
+      if (!newMathField) return;
 
       // After insertion, focus the newly created math field so the caret is inside it
-      const editor = document.querySelector('[contenteditable="true"]') as HTMLElement | null;
-      if (!editor) return;
-
-      const fields = editor.querySelectorAll('math-field');
-      if (fields.length === 0) return;
-      const newMathField = fields[fields.length - 1] as HTMLElement;
+      const editor = document.querySelector(
+        '[contenteditable="true"]',
+      ) as HTMLElement | null;
 
       // Attach an undo handler so Cmd/Ctrl+Z inside the field triggers editor undo
       const handleFieldUndo = (e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
           e.preventDefault();
           // Move focus back to the editor then invoke native undo
-          editor.focus();
-          document.execCommand('undo');
+          if (editor) {
+            editor.focus();
+            document.execCommand('undo');
+          }
         }
       };
       newMathField.addEventListener('keydown', handleFieldUndo);

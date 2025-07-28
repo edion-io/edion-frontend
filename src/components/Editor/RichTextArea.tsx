@@ -35,6 +35,18 @@ declare global {
 const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTextAreaProps) => {
   const { handleKeyDown: handleInlineMathKeyDown, handleMathFieldDelete } = useInlineMath();
   
+  const isListItemEmpty = (li: HTMLElement | null): boolean => {
+    if (!li) return false;
+    // An item is not empty if it contains a math-field, image, or table.
+    if (li.querySelector('math-field, img, table')) {
+      return false;
+    }
+    // An item is empty if its text content is effectively empty
+    // (only whitespace, ZWS, or NBSP) or if its only content is a <br> tag.
+    const textContent = li.textContent || '';
+    return textContent.replace(/[\u00A0\u200B]/g, ' ').trim() === '' || li.innerHTML === '<br>';
+  };
+  
   // Define ordered list styles in sequence: decimal (1, 2, 3), alpha (a, b, c), roman (i, ii, iii)
   const orderedListStyles: ListStyle[] = [
     { className: 'list-decimal', marker: 'decimal' },
@@ -313,9 +325,17 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       // Handle cursor movement from within math field
       if (target.classList.contains('math-field')) {
         const mathField = target as any;
+        const initialPosition = mathField.position;
+        const mathValue = mathField.value;
+
+        console.log(`[MATH DEBUG] Key: ${e.key} inside math-field. Pos: ${initialPosition}, Value: "${mathValue}"`);
+        
         // Use MathLive's built-in edge detection for complex expressions
         // Try to move in the direction first, then check if we're still in the same position
-        const initialPosition = mathField.position;
+        
+        // NEW: explicit position-based edge detection as fallback
+        const atVeryLeft = initialPosition === 0;
+        const atVeryRight = typeof mathValue === 'string' ? initialPosition === mathValue.length : false;
         
         // Temporarily try to move the cursor in the desired direction
         let isAtEdge = false;
@@ -326,7 +346,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           const newPosition = mathField.position;
           
           // If position didn't change, we're at the right edge
-          isAtEdge = (newPosition === initialPosition);
+          isAtEdge = (newPosition === initialPosition) || atVeryRight;
           
           // Move back to original position
           mathField.position = initialPosition;
@@ -336,7 +356,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           const newPosition = mathField.position;
           
           // If position didn't change, we're at the left edge
-          isAtEdge = (newPosition === initialPosition);
+          isAtEdge = (newPosition === initialPosition) || atVeryLeft;
           
           // Move back to original position
           mathField.position = initialPosition;
@@ -363,9 +383,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           const adjacentNode = e.key === 'ArrowRight' ? target.nextSibling : target.previousSibling;
           
           console.log(`[MATH NAV] Adjacent node:`, {
-            exists: !!adjacentNode,
             nodeType: adjacentNode?.nodeType,
-            textContent: adjacentNode?.textContent,
             nodeName: adjacentNode?.nodeName
           });
           
@@ -402,7 +420,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           } else {
             console.log(`[MATH NAV] No adjacent node found, creating new text node`);
             // Create a new text node if needed
-            const textNode = document.createTextNode(' ');
+            const textNode = document.createTextNode('\u00A0'); // Use non-breaking space for visibility
             if (e.key === 'ArrowRight') {
               target.parentNode?.insertBefore(textNode, target.nextSibling);
             } else {
@@ -411,11 +429,12 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             
             // Position cursor in the new text node
             const newRange = document.createRange();
-            newRange.setStart(textNode, 0);
+            newRange.setStart(textNode, 1); // Position after the ZWS
             newRange.collapse(true);
             selection.removeAllRanges();
             selection.addRange(newRange);
           }
+          return; // Stop further event handling
         } else {
           // If we're inside a math field but not at the exit condition, don't process the "entering math field" logic
           console.log(`[MATH NAV] Inside math field, not at exit condition - allowing normal navigation`);
@@ -676,6 +695,37 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
+        const target = e.target as HTMLElement;
+
+        // Handle 'Enter' from within a math block in a list
+        if (target.classList.contains('math-field')) {
+          const listItem = target.closest('li');
+          if (listItem) {
+            e.preventDefault();
+            e.stopPropagation(); // Stop the event from bubbling further
+
+            const newListItem = document.createElement('li');
+            const space = document.createTextNode('\u00A0'); // Use a non-breaking space
+            newListItem.appendChild(space);
+
+            // Insert the new list item after the current one
+            listItem.parentNode?.insertBefore(newListItem, listItem.nextSibling);
+
+            // Move cursor to the new list item
+            const newRange = document.createRange();
+            newRange.setStart(space, 1); // Position cursor after the space
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+
+            // Update content
+            if (editorRef.current) {
+              onChange(editorRef.current.innerHTML);
+            }
+            return;
+          }
+        }
+
         let node = range.startContainer;
         let listItem = null;
         
@@ -690,10 +740,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         
         // If we're in a list item and it's empty, break out of the list
         if (listItem) {
-          const isEmpty = !listItem.textContent || 
-                          listItem.textContent === '\u00A0' || 
-                          listItem.textContent === '\u200B' ||
-                          listItem.innerHTML === '<br>';
+          const isEmpty = isListItemEmpty(listItem);
           
           if (isEmpty) {
             e.preventDefault();
@@ -1344,10 +1391,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           }
           
           // Check if the list item is empty or contains only a non-breaking space
-          const isEmpty = !listItem.textContent || 
-                          listItem.textContent === '\u00A0' || 
-                          listItem.textContent === '\u200B' ||
-                          listItem.innerHTML === '<br>';
+          const isEmpty = isListItemEmpty(listItem);
           
           // If we're at the start of a list item
           if (isAtStart) {
@@ -1447,7 +1491,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           // If this is the first item in the list and it's empty, remove the entire list formatting
           const isFirstItem = listItem === list.querySelector('li:first-child');
           
-          if (isFirstItem && isEmpty) {
+          if (isFirstItem && isListItemEmpty(listItem)) {
             // If there's only one item in the list, convert to paragraph
             if (list.querySelectorAll('li').length === 1) {
               // Get indentation from the list item
@@ -1530,7 +1574,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             
             if (prevItem && prevItem.tagName === 'LI') {
               // If current item is empty, just remove it and place cursor at end of previous item
-              if (isEmpty) {
+              if (isListItemEmpty(listItem)) {
                 // Set cursor to end of previous item
                 const walker = document.createTreeWalker(
                   prevItem,
