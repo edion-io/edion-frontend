@@ -35,6 +35,17 @@ declare global {
 const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTextAreaProps) => {
   const { handleKeyDown: handleInlineMathKeyDown, handleMathFieldDelete } = useInlineMath();
   
+  const addMathFieldInputListener = (mathField: Element) => {
+    mathField.addEventListener('input', () => {
+        const updatedLatex = (mathField as any).value;
+        mathField.setAttribute('data-latex', updatedLatex);
+        mathField.setAttribute('value', updatedLatex);
+        if (editorRef.current) {
+          onChange(editorRef.current.innerHTML);
+        }
+    });
+  };
+  
   const isListItemEmpty = (li: HTMLElement | null): boolean => {
     if (!li) return false;
     // An item is not empty if it contains a math-field, image, or table.
@@ -2044,18 +2055,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       (mathField as HTMLElement).setAttribute('plonk-sound', 'none');
       
       // Add change event listener
-      mathField.addEventListener('input', () => {
-        // Get updated LaTeX value
-        const updatedLatex = (mathField as any).value;
-        
-        // Store the updated LaTeX
-        mathField.setAttribute('data-latex', updatedLatex);
-        
-        // Update the overall content
-        if (editorRef.current) {
-          onChange(editorRef.current.innerHTML);
-        }
-      });
+      addMathFieldInputListener(mathField);
       
       // Mark as initialized
       mathField.setAttribute('data-initialized', 'true');
@@ -2115,13 +2115,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             }
             
             // Add event listener
-            mathField.addEventListener('input', () => {
-              const updatedLatex = (mathField as any).value;
-              mathField.setAttribute('data-latex', updatedLatex);
-              if (editorRef.current) {
-                onChange(editorRef.current.innerHTML);
-              }
-            });
+            addMathFieldInputListener(mathField);
             
             break;
           }
