@@ -35,17 +35,24 @@ declare global {
 const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTextAreaProps) => {
   const { handleKeyDown: handleInlineMathKeyDown, handleMathFieldDelete } = useInlineMath();
   
-  const addMathFieldInputListener = (mathField: Element) => {
-    mathField.addEventListener('input', () => {
-        const updatedLatex = (mathField as any).value;
-        mathField.setAttribute('data-latex', updatedLatex);
-        mathField.setAttribute('value', updatedLatex);
-        if (editorRef.current) {
-          onChange(editorRef.current.innerHTML);
-        }
-    });
+  const addMathFieldInputListener = (
+    mathField: HTMLElement & { value?: string }
+  ) => {
+    // Prevent duplicate listeners on the same node
+    if (mathField.hasAttribute('data-initialized')) return;
+
+    const handler = () => {
+      const updatedLatex = mathField.value ?? '';
+      mathField.setAttribute('data-latex', updatedLatex);
+      mathField.setAttribute('value', updatedLatex);
+      if (editorRef.current) {
+        onChange(editorRef.current.innerHTML);
+      }
+    };
+
+    mathField.addEventListener('input', handler);
+    mathField.setAttribute('data-initialized', 'true');
   };
-  
   const isListItemEmpty = (li: HTMLElement | null): boolean => {
     if (!li) return false;
     // An item is not empty if it contains a math-field, image, or table.
@@ -170,6 +177,58 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
   
   // Handle keyboard events in the editor
   const handleEditorKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+
+        // Handle Enter when positioned just before a math field
+        if (range.startContainer.nodeType === Node.TEXT_NODE && 
+            range.startContainer.nextSibling && 
+            range.startContainer.nextSibling instanceof HTMLElement &&
+            range.startContainer.nextSibling.classList.contains('math-field')) {
+          
+          e.preventDefault();
+          
+          // Get the current paragraph
+          const currentParagraph = range.startContainer.parentElement;
+          if (currentParagraph && ['P', 'DIV'].includes(currentParagraph.tagName)) {
+            // Create a new paragraph
+            const newParagraph = document.createElement('p');
+            newParagraph.innerHTML = '<br>';
+            
+            // Insert the new paragraph before the current one
+            currentParagraph.parentNode?.insertBefore(newParagraph, currentParagraph);
+            
+            // Keep cursor in the original position (to the left of the math field)
+            const newRange = document.createRange();
+            newRange.setStart(range.startContainer, range.startOffset);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+            
+            // Update content
+            if (editorRef.current) {
+              onChange(editorRef.current.innerHTML);
+            }
+            
+            return;
+          }
+        }
+      }
+
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const parentElement = range.startContainer.nodeType === Node.ELEMENT_NODE 
+            ? range.startContainer as HTMLElement 
+            : range.startContainer.parentElement;
+          
+        } else {
+        }
+      }, 0);
+    }
     // First call the inline math handler
     handleInlineMathKeyDown(e);
 
@@ -1656,6 +1715,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
               newRange.setStart(p.firstChild, 0);
             } else if (p.firstChild) {
               // If first child is an element, place cursor at the beginning
+              console.log('[Backspace Debug] Regular LI -> P. New P has firstChild:', p.firstChild);
               newRange.setStart(p.firstChild, 0);
             } else {
               // If no children, place cursor inside the paragraph
@@ -2045,14 +2105,14 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
     }
     
     // Set up event listeners for math-field elements
-    document.querySelectorAll('.math-field:not([data-initialized])').forEach(mathField => {
+    document.querySelectorAll<HTMLElement>('.math-field:not([data-initialized])').forEach(mathField => {
       const latex = mathField.getAttribute('data-latex') || '';
       
       // Set the value of the math-field element
-      (mathField as HTMLElement).setAttribute('value', latex);
-      (mathField as HTMLElement).setAttribute('virtual-keyboard-mode', 'manual');
-      (mathField as HTMLElement).setAttribute('keypress-sound', 'none');
-      (mathField as HTMLElement).setAttribute('plonk-sound', 'none');
+      mathField.setAttribute('value', latex);
+      mathField.setAttribute('virtual-keyboard-mode', 'manual');
+      mathField.setAttribute('keypress-sound', 'none');
+      mathField.setAttribute('plonk-sound', 'none');
       
       // Add change event listener
       addMathFieldInputListener(mathField);
@@ -2113,9 +2173,9 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             } else {
               textNode.parentNode?.replaceChild(mathField, textNode);
             }
-            
             // Add event listener
             addMathFieldInputListener(mathField);
+            mathField.setAttribute('data-initialized', 'true');
             
             break;
           }

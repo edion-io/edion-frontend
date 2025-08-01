@@ -660,21 +660,7 @@ const EditorToolbar = ({
         }
         
         // Debug the decision values
-        console.log(`[DEBUG] ${command} state detection:`, {
-          hasMarkerFormatting,
-          hasFullContentFormatting,
-          hasAnyContentFormatting,
-          queryCommandState,
-          isFullListItemSelection,
-          desiredFormattingState: desiredFormattingState ? 'ADD' : 'REMOVE',
-          markerClass,
-          listItemClasses: Array.from(listItem.classList)
-        });
-        
-        // Debug for fully formatted case
-        if (hasMarkerFormatting && hasFullContentFormatting) {
-          console.log(`[DEBUG] Fully formatted ${command} - will REMOVE formatting`);
-        }
+
         
         // Apply marker formatting based on desired state
         if (desiredFormattingState) {
@@ -722,10 +708,7 @@ const EditorToolbar = ({
             }
           }
           
-          // Debug for remove formatting case
-          if (!desiredFormattingState && hasFullContentFormatting) {
-            console.log(`[DEBUG] REMOVE case: Removing ${command} from fully formatted content`);
-          }
+
         } else {
           // Update states to reflect the current formatting
           switch (command) {
@@ -909,7 +892,7 @@ const EditorToolbar = ({
     while (currentNode && currentNode !== editorRef.current) {
       if (currentNode.nodeType === Node.ELEMENT_NODE) {
         const element = currentNode as HTMLElement;
-        console.log(`[getCurrentAlignment] Checking element: <${element.tagName.toLowerCase()}>`, { element, style: element.style.textAlign, computed: window.getComputedStyle(element).textAlign });
+
         
         // First check for direct inline style (highest priority)
         if (element.style && element.style.textAlign) {
