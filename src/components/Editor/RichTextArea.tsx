@@ -217,17 +217,6 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         }
       }
 
-      setTimeout(() => {
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const parentElement = range.startContainer.nodeType === Node.ELEMENT_NODE 
-            ? range.startContainer as HTMLElement 
-            : range.startContainer.parentElement;
-          
-        } else {
-        }
-      }, 0);
     }
     // First call the inline math handler
     handleInlineMathKeyDown(e);
@@ -1715,7 +1704,6 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
               newRange.setStart(p.firstChild, 0);
             } else if (p.firstChild) {
               // If first child is an element, place cursor at the beginning
-              console.log('[Backspace Debug] Regular LI -> P. New P has firstChild:', p.firstChild);
               newRange.setStart(p.firstChild, 0);
             } else {
               // If no children, place cursor inside the paragraph
