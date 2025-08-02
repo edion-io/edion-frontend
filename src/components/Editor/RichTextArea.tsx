@@ -1389,35 +1389,42 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       
               // If we found a list item and we're at the beginning of it
         if (listItem && list) {
+          // CONSOLE LOG: Backspace in a list item detected.
+          const selection = window.getSelection();
+          const range = selection ? selection.getRangeAt(0) : null;
+
           // Check if we're at the beginning of the list item's content
           let isAtStart = false;
-          
-          // For text nodes, check if we're at the beginning
-          if (range.startContainer.nodeType === Node.TEXT_NODE) {
-            isAtStart = range.startOffset === 0;
-            
-            // If we're at the start of a text node, make sure it's the first text node
-            if (isAtStart) {
-              const walker = document.createTreeWalker(
-                listItem,
-                NodeFilter.SHOW_TEXT,
-                null
-              );
+          if(range) {
+            // For text nodes, check if we're at the beginning
+            if (range.startContainer.nodeType === Node.TEXT_NODE) {
+              isAtStart = range.startOffset === 0;
               
-              const firstTextNode = walker.nextNode();
-              isAtStart = firstTextNode === range.startContainer;
+              // If we're at the start of a text node, make sure it's the first text node
+              if (isAtStart) {
+                const walker = document.createTreeWalker(
+                  listItem,
+                  NodeFilter.SHOW_TEXT,
+                  null
+                );
+                
+                const firstTextNode = walker.nextNode();
+                isAtStart = firstTextNode === range.startContainer;
+              }
+            } 
+            // For element nodes, check if we're at the first position
+            else if (range.startContainer === listItem) {
+              isAtStart = range.startOffset === 0;
             }
-          } 
-          // For element nodes, check if we're at the first position
-          else if (range.startContainer === listItem) {
-            isAtStart = range.startOffset === 0;
+            // Special handling for aligned lists with flexbox layout
+            else if (range.startContainer === listItem.firstChild && range.startOffset === 0) {
+              // When list items have justifyContent (center/right alignment), 
+              // the cursor might be positioned differently
+              isAtStart = true;
+            }
           }
-          // Special handling for aligned lists with flexbox layout
-          else if (range.startContainer === listItem.firstChild && range.startOffset === 0) {
-            // When list items have justifyContent (center/right alignment), 
-            // the cursor might be positioned differently
-            isAtStart = true;
-          }
+
+          const isFirstItem = listItem === list.querySelector('li:first-child');
           
           // Check if the list item is empty or contains only a non-breaking space
           const isEmpty = isListItemEmpty(listItem);
@@ -1426,7 +1433,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           if (isAtStart) {
             // If there's a selection, do not trigger any custom list-handling logic.
             // Let the default backspace behavior (deleting the selection) proceed.
-            if (!range.collapsed) {
+            if (range && !range.collapsed) {
               return;
             }
             
@@ -1455,7 +1462,15 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             // Create paragraphs for each list item's content
             items.forEach((item, index) => {
               const p = document.createElement('p');
-              p.innerHTML = item.innerHTML;
+              
+              // Move all child nodes from item to p to preserve math-field elements
+              while (item.firstChild) {
+                p.appendChild(item.firstChild);
+              }
+              // If no children were moved, add a BR for empty paragraph
+              if (!p.hasChildNodes()) {
+                p.appendChild(document.createElement('br'));
+              }
               
               // Apply indentation to the paragraph
               const data = itemsData[index];
@@ -1532,7 +1547,15 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             
             // Replace the list with a paragraph
             const p = document.createElement('p');
-            p.innerHTML = '<br>'; // Empty paragraph needs BR to be visible
+            
+            // Move all child nodes from listItem to p to preserve math-field elements
+            while (listItem.firstChild) {
+              p.appendChild(listItem.firstChild);
+            }
+            // If no children were moved, add a BR for empty paragraph
+            if (!p.hasChildNodes()) {
+              p.appendChild(document.createElement('br'));
+            }
               
               // Apply indentation to the paragraph
               if (indentLevel && indentLevel.trim() !== '' && indentLevel !== '0px' && indentLevel !== '0') {
@@ -1638,8 +1661,10 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
               }
               // If not empty, merge content with previous item
               else {
-                // Append current item's content to previous item
-                prevItem.innerHTML += listItem.innerHTML;
+                // Append current item's content to previous item by moving nodes
+                while (listItem.firstChild) {
+                  prevItem.appendChild(listItem.firstChild);
+                }
                 
                 // Remove current item
                 listItem.remove();
@@ -1657,10 +1682,22 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           }
           // Handle regular backspace at start of any list item (not just first/empty)
           else {
-            // For any list item at the start, remove the list formatting from this item
-            // Convert this list item to a paragraph
-            const p = document.createElement('p');
-            p.innerHTML = listItem.innerHTML || '<br>';
+            // CONSOLE LOG: Backspace at start of a generic list item
+                         // For any list item at the start, remove the list formatting from this item
+             // Convert this list item to a paragraph
+             const p = document.createElement('p');
+             
+             // Store the current selection before DOM manipulation
+                         const originalRange = range ? range.cloneRange() : null;
+
+            // Move all child nodes from listItem to p to preserve math-field elements
+            while (listItem.firstChild) {
+              p.appendChild(listItem.firstChild);
+            }
+            // If no children were moved, add a BR for empty paragraph
+            if (!p.hasChildNodes()) {
+              p.appendChild(document.createElement('br'));
+            }
             
             // Get indentation from the list item
             const indentLevel = listItem.style.getPropertyValue('--indent-level');
@@ -1700,16 +1737,36 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             
             // Set cursor to the paragraph - improved cursor positioning
             const newRange = document.createRange();
-            if (p.firstChild && p.firstChild.nodeType === Node.TEXT_NODE) {
+            
+            // Try to position cursor relative to the original position
+            if (originalRange && originalRange.startContainer.nodeType === Node.TEXT_NODE) {
+              // Look for a text node at the same relative position
+              const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, null);
+              let textNode = walker.nextNode();
+              if (textNode) {
+                newRange.setStart(textNode, 0);
+              } else {
+                newRange.setStart(p, 0);
+              }
+            } else if (p.firstChild && p.firstChild.nodeType === Node.TEXT_NODE) {
               newRange.setStart(p.firstChild, 0);
             } else if (p.firstChild) {
-              // If first child is an element, place cursor at the beginning
-              newRange.setStart(p.firstChild, 0);
+              // If first child is an element (e.g., math-field), insert a zero-width space before it and place the cursor there
+              const firstChildEl = p.firstChild;
+              let spacerNode: Text;
+              if (firstChildEl.previousSibling && firstChildEl.previousSibling.nodeType === Node.TEXT_NODE && (firstChildEl.previousSibling as Text).textContent === '\u200B') {
+                spacerNode = firstChildEl.previousSibling as Text;
+              } else {
+                spacerNode = document.createTextNode('\u200B');
+                p.insertBefore(spacerNode, firstChildEl);
+              }
+              newRange.setStart(spacerNode, spacerNode.textContent!.length);
             } else {
               // If no children, place cursor inside the paragraph
               newRange.setStart(p, 0);
             }
             newRange.collapse(true);
+            
             selection.removeAllRanges();
             selection.addRange(newRange);
             
