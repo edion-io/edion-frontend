@@ -420,12 +420,13 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             // Always position cursor in the adjacent space first
             const newRange = document.createRange();
             if (adjacentNode.nodeType === Node.TEXT_NODE) {
+              const isSpacerNode = adjacentNode.textContent === '\u200B' || adjacentNode.textContent === '\u00A0';
               // Position cursor at the edge of the text node that's closest to the math field
               if (e.key === 'ArrowRight') {
-                const offset = adjacentNode.textContent === '\u200B' ? 1 : 0;
+                const offset = isSpacerNode ? 1 : 0;
                 newRange.setStart(adjacentNode, offset);
               } else { // ArrowLeft
-                const offset = adjacentNode.textContent === '\u200B' ? 0 : adjacentNode.textContent!.length;
+                const offset = isSpacerNode ? 0 : adjacentNode.textContent!.length;
                 newRange.setStart(adjacentNode, offset);
               }
             } else {
@@ -448,7 +449,9 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           } else {
             
             // Create a new text node if needed
-            const textNode = document.createTextNode('\u200B'); // Use non-breaking space for visibility
+            const isInListItem = (target as HTMLElement).closest('li');
+            const spaceChar = isInListItem ? '\u00A0' : '\u200B'; // NBSP in lists for caret visibility
+            const textNode = document.createTextNode(spaceChar);
             if (e.key === 'ArrowRight') {
               target.parentNode?.insertBefore(textNode, target.nextSibling);
             } else {
