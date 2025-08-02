@@ -422,12 +422,11 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             if (adjacentNode.nodeType === Node.TEXT_NODE) {
               // Position cursor at the edge of the text node that's closest to the math field
               if (e.key === 'ArrowRight') {
-                newRange.setStart(adjacentNode, 0);
-                
-              } else {
-                const offset = adjacentNode.textContent!.length;
+                const offset = adjacentNode.textContent === '\u200B' ? 1 : 0;
                 newRange.setStart(adjacentNode, offset);
-                
+              } else { // ArrowLeft
+                const offset = adjacentNode.textContent === '\u200B' ? 0 : adjacentNode.textContent!.length;
+                newRange.setStart(adjacentNode, offset);
               }
             } else {
               // For other nodes, position at their edge closest to the math field
@@ -449,7 +448,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           } else {
             
             // Create a new text node if needed
-            const textNode = document.createTextNode('\u00A0'); // Use non-breaking space for visibility
+            const textNode = document.createTextNode('\u200B'); // Use non-breaking space for visibility
             if (e.key === 'ArrowRight') {
               target.parentNode?.insertBefore(textNode, target.nextSibling);
             } else {
@@ -458,7 +457,11 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             
             // Position cursor in the new text node
             const newRange = document.createRange();
-            newRange.setStart(textNode, 1); // Position after the ZWS
+            if (e.key === 'ArrowLeft') {
+              newRange.setStart(textNode, 0);
+            } else {
+              newRange.setStart(textNode, 1);
+            }
             newRange.collapse(true);
             selection.removeAllRanges();
             selection.addRange(newRange);
