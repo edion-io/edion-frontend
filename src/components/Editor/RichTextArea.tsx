@@ -35,6 +35,58 @@ declare global {
 const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTextAreaProps) => {
   const { handleKeyDown: handleInlineMathKeyDown, handleMathFieldDelete } = useInlineMath();
   
+  // === Debug helpers ===
+  const DEBUG_MATH = false;
+  const dlog = (..._args: any[]) => {};
+  const dgroup = (_label: string) => {};
+  const dgroupEnd = () => {};
+
+  const nodeSummary = (n: Node | null) => {
+    if (!n) return 'null';
+    if (n.nodeType === Node.TEXT_NODE) {
+      const text = (n.textContent || '').replace(/\s+/g, ' ').slice(0, 40);
+      return `#text("${text}")`;
+    }
+    const el = n as Element;
+    const cls = (el as HTMLElement).className ? '.' + (el as HTMLElement).className : '';
+    return `<${el.nodeName.toLowerCase()}${cls}>`;
+  };
+
+  const rangeSummary = (r: Range) => ({
+    start: nodeSummary(r.startContainer),
+    startOffset: r.startOffset,
+    end: nodeSummary(r.endContainer),
+    endOffset: r.endOffset,
+    collapsed: r.collapsed,
+  });
+
+  const getBlockAncestor = (node: Node, root: HTMLElement): HTMLElement | null => {
+    let cur: Node | null = node;
+    while (cur && cur !== root) {
+      if (cur.nodeType === Node.ELEMENT_NODE) {
+        const el = cur as HTMLElement;
+        if (['LI','P','DIV','H1','H2','H3','H4','H5','H6'].includes(el.tagName)) return el;
+      }
+      cur = cur.parentNode;
+    }
+    return null;
+  };
+
+  const isAtStartOfBlockFast = (range: Range, root: HTMLElement): boolean => {
+    const block = getBlockAncestor(range.startContainer, root) || root;
+    const probe = document.createRange();
+    probe.selectNodeContents(block);
+    probe.setEnd(range.startContainer, range.startOffset);
+    const before = probe.toString().replace(/[\u200B\u00A0\s]/g, '');
+    return before === '';
+  };
+
+  const blockSnapshot = (el: HTMLElement | null) => {
+    if (!el) return 'null';
+    const html = el.outerHTML.replace(/\s+/g, ' ').slice(0, 160);
+    return `${el.tagName} ${html}`;
+  };
+
   const addMathFieldInputListener = (
     mathField: HTMLElement & { value?: string }
   ) => {
@@ -177,6 +229,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
   
   // Handle keyboard events in the editor
   const handleEditorKeyDown = (e: React.KeyboardEvent) => {
+    // debug disabled
     if (e.key === 'Enter') {
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
@@ -451,6 +504,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             // Create a new text node if needed
             const isInListItem = (target as HTMLElement).closest('li');
             const spaceChar = isInListItem ? '\u00A0' : '\u200B'; // NBSP in lists for caret visibility
+            // debug disabled
             const textNode = document.createTextNode(spaceChar);
             if (e.key === 'ArrowRight') {
               target.parentNode?.insertBefore(textNode, target.nextSibling);
@@ -483,6 +537,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
+        // debug disabled
         
         // Check if we're at the start of a text node right after a math-field
         if (range.collapsed) {
@@ -493,11 +548,59 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           // If we're in a text node
           if (node.nodeType === Node.TEXT_NODE) {
             // If we're at the beginning of a text node or it only contains whitespace
+            // debug disabled
             if (offset === 0 || (node.textContent || '').trim() === '') {
               mathNode = node.previousSibling;
               // If this text node is empty/whitespace, mark it for removal
               if ((node.textContent || '').trim() === '') {
+                // debug disabled
                 node.parentNode?.removeChild(node);
+              }
+              // Special case: caret at start of a spacer before a math-field → merge blocks, preserve math
+              if (offset === 0) {
+                const nextSibling = (node.nextSibling || null) as Node | null;
+                if (nextSibling && nextSibling.nodeType === Node.ELEMENT_NODE && (nextSibling as HTMLElement).classList.contains('math-field')) {
+                  // debug disabled
+                  if (editorRef.current) {
+                    const currentBlock = getBlockAncestor(node, editorRef.current);
+                    const canMerge = !!currentBlock && currentBlock !== editorRef.current && (currentBlock as HTMLElement).previousElementSibling;
+                    if (canMerge) {
+                      e.preventDefault();
+                      // Remove spacer prior to merge to avoid stray ZWS
+                      if (node.parentNode) {
+                        node.parentNode.removeChild(node);
+                      }
+                      const prevBlock = (currentBlock as HTMLElement).previousElementSibling as HTMLElement;
+                      const firstMovedNode = (currentBlock as HTMLElement).firstChild;
+                      // Move all children from current block to previous block
+                      while ((currentBlock as HTMLElement).firstChild) {
+                        prevBlock.appendChild((currentBlock as HTMLElement).firstChild!);
+                      }
+                      // Remove empty current block
+                      (currentBlock as HTMLElement).remove();
+                      // Place caret before what used to be first node (now in prevBlock)
+                      const caretRange = document.createRange();
+                      if (firstMovedNode && prevBlock.contains(firstMovedNode)) {
+                        caretRange.setStartBefore(firstMovedNode);
+                      } else {
+                        caretRange.selectNodeContents(prevBlock);
+                        caretRange.collapse(false);
+                      }
+                      caretRange.collapse(true);
+                      const sel = window.getSelection();
+                      if (sel) {
+                        sel.removeAllRanges();
+                        sel.addRange(caretRange);
+                      }
+                      if (editorRef.current) {
+                        onChange(editorRef.current.innerHTML);
+                      }
+                      // debug disabled
+                      return;
+                    }
+                  }
+                  // debug disabled
+                }
               }
             }
           } else if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
@@ -512,17 +615,22 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             }
           }
           
-          // Check if we found a math-field
-          if (mathNode && mathNode.nodeType === Node.ELEMENT_NODE && 
-              (mathNode as HTMLElement).classList.contains('math-field')) {
-            e.preventDefault();
-            mathNode.parentNode?.removeChild(mathNode);
-            if (editorRef.current) {
-              onChange(editorRef.current.innerHTML);
-            }
-            return;
+        // Check if we found a math-field
+        if (mathNode && mathNode.nodeType === Node.ELEMENT_NODE && 
+            (mathNode as HTMLElement).classList.contains('math-field')) {
+          // debug disabled
+          e.preventDefault();
+          // debug disabled
+          mathNode.parentNode?.removeChild(mathNode);
+          if (editorRef.current) {
+            onChange(editorRef.current.innerHTML);
           }
+          // debug disabled
+          return;
         }
+          // debug disabled
+        }
+        // debug disabled
       }
     }
 
@@ -1241,6 +1349,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       if (mathField) {
         // If we're at the edge of a math field
         if (range.startOffset === 0 || range.startOffset === (range.startContainer.textContent || '').length) {
+          // debug disabled
           // Remove the entire math field
           mathField.remove();
           e.preventDefault();
@@ -1262,9 +1371,11 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           if (editorRef.current) {
             onChange(editorRef.current.innerHTML);
           }
+          // debug disabled
         }
         return;
       }
+      // debug disabled
       
       // Prevent Delete/Backspace from removing indentation on paragraphs
       // Check if we're at the beginning/end of an indented paragraph
