@@ -1,69 +1,93 @@
-# Welcome to your Lovable project
+# Edion Frontend
 
-## Project info
+A Vite + React + TypeScript single-page application with Tailwind CSS and shadcn/ui. It provides a chat workspace with tabbed conversations, local persistence, a settings page with theme and profile controls, and a LaTeX math editor demo.
 
-**URL**: https://lovable.dev/projects/a6f3c473-1ba9-4294-8e6d-d2f9401c4a54
+## Tech Stack
+- React 18, TypeScript, Vite
+- Tailwind CSS, shadcn/ui (Radix UI)
+- React Router, TanStack Query
+- Sonner (toasts)
+- MathLive + LaTeX preview/editor
+- @react-pdf/renderer (PDF generation demo)
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/a6f3c473-1ba9-4294-8e6d-d2f9401c4a54) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Getting Started
+1. Install Node.js 18+.
+2. Install dependencies:
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
 npm i
+```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+3. Run the dev server:
+
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+4. Build for production:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```sh
+npm run build
+```
 
-**Use GitHub Codespaces**
+5. Preview the production build:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```sh
+npm run preview
+```
 
-## What technologies are used for this project?
+## Available Scripts
+- `npm run dev`: Start Vite dev server
+- `npm run build`: Build production assets
+- `npm run build:dev`: Build in development mode
+- `npm run preview`: Preview built app
+- `npm run lint`: Run ESLint
 
-This project is built with .
+## App Structure
+- `src/main.tsx`: App bootstrap and immediate theme initialization from `localStorage` or system preference.
+- `src/App.tsx`: Providers (TanStack Query, Tooltip, Sonner) and routing.
+- `src/pages/Index.tsx`: Landing page with header, search, and quick actions.
+- `src/pages/Chat.tsx`: Chat workspace UI.
+- `src/hooks/use-chat.ts`: Chat state model (tabs, messages, history) with localStorage persistence and simulated assistant responses.
+- `src/pages/Settings.tsx`: Profile, theme (dark mode), and basic security/notification UI; integrates an image cropper.
+- `src/app/math-demo/page.tsx`: LaTeX math editor demo.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Components (selected)
+- `components/Header.tsx`: Top bar with history toggle and user menu.
+- `components/ChatHeader.tsx`, `ChatMessages.tsx`, `ChatInput.tsx`, `ChatHistory.tsx`: Chat UI pieces.
+- `components/Editor/*`: Block-based document editor combining text and math blocks.
+- `components/ui/*`: shadcn/ui primitives.
 
-## How can I deploy this project?
+### Utilities and Types
+- `src/types.ts`: Core types (user settings, chat tabs/messages, editor blocks).
+- `src/utils/storageUtils.ts`: Read/update user settings and chat history in localStorage; dispatches `themeChanged` events.
+- `src/utils/toastUtils.ts`: Toast helpers.
+- `src/utils/pdfUtils.ts`: Example of generating a PDF and attaching it to a chat tab.
 
-Simply open [Lovable](https://lovable.dev/projects/a6f3c473-1ba9-4294-8e6d-d2f9401c4a54) and click on Share -> Publish.
+## Routing
+Defined in `src/App.tsx`:
+- `/` → Index
+- `/chat` → Chat workspace
+- `/settings` → Settings
+- `/math-editor` → LaTeX editor demo
+- `*` → 404
 
-## I want to use a custom domain - is that possible?
+## State and Persistence
+- User settings and theme are saved in `localStorage` under `userSettings`.
+- Chat tabs and history are saved as `chatTabs` and `chatHistory`.
+- Theme class (`dark`) is set on `<html>` before initial render for no-flash behavior.
 
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+## Styling
+- Tailwind CSS with a small set of custom components from shadcn/ui.
+- Dark mode toggled via `document.documentElement.classList`.
+
+## PDF and Math
+- PDF demo uses `@react-pdf/renderer` to generate a blob and attach it to a chat tab.
+- Math editor uses MathLive for interactive math fields and can show generated LaTeX.
+
+## Configuration
+- `vite.config.ts` sets alias `@` → `src`. In development, `lovable-tagger` is enabled but not required for production.
+- Port defaults to 8080 in dev server configuration.
+
+## Deployment
+- Build with `npm run build` and serve files in `dist/` with any static host (e.g., Nginx, Vercel, Netlify). Ensure SPA fallback to `index.html` is enabled for client-side routing.
