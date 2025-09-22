@@ -110,13 +110,16 @@ export const useChat = (userSettings: UserSettings) => {
     e.preventDefault();
     if (!inputValue.trim() || !activeTabId) return;
 
+    // Capture the current user input before we clear it for async handling
+    const userText = inputValue;
+
     const updatedTabs = tabs.map(tab => {
       if (tab.id === activeTabId) {
         const updatedMessages = [
           ...tab.messages,
           {
             id: tab.messages.length + 1,
-            text: inputValue,
+            text: userText,
             isUser: true,
           }
         ];
@@ -136,13 +139,26 @@ export const useChat = (userSettings: UserSettings) => {
     setTimeout(() => {
       setTabs(prevTabs => prevTabs.map(tab => {
         if (tab.id === activeTabId) {
+          // Determine assistant response based on the user's latest message
+          const normalized = userText.trim().toLowerCase();
+          const isExercisePrompt = normalized.includes('exercise');
+          const isGradeResponse = /^grade\s*\d+/i.test(userText.trim());
+
+          const exerciseText = "Use the Internet, or contact environment agencies and water companies, to help you with the exercises below.\n\n\\begin{enumerate}\n\\item Name three places in your home where water is made dirty.\n\\item Where does the dirty water go when it leaves your home?\n\\end{enumerate}";
+
+          const responseText = isGradeResponse
+            ? exerciseText
+            : isExercisePrompt
+              ? "What grade are the students?"
+              : "I'm processing your request. How else can I assist you?";
+
           return {
             ...tab,
             messages: [
               ...tab.messages,
               {
                 id: tab.messages.length + 1,
-                text: "I'm processing your request. How else can I assist you?",
+                text: responseText,
                 isUser: false,
               }
             ],
@@ -157,7 +173,7 @@ export const useChat = (userSettings: UserSettings) => {
       if (chat.id === activeTabId) {
         return {
           ...chat,
-          lastMessage: inputValue,
+          lastMessage: userText,
         };
       }
       return chat;

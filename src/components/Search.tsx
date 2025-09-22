@@ -49,7 +49,9 @@ const Search = () => {
           },
           {
             id: 2,
-            text: "Hello! I'm here to help. What can I assist you with today?",
+            text: (searchInput.trim().toLowerCase().includes('exercise')
+              ? "What grade are the students?"
+              : "Hello! I'm here to help. What can I assist you with today?"),
             isUser: false,
           }
         ],
