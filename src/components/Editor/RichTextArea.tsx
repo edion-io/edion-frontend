@@ -290,7 +290,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           // Check if we're in a space between math fields and at the start, or just a single-char space
           const textContent = range.startContainer.textContent || '';
           const isAtStart = range.startOffset === 0;
-          const isSpaceNode = textContent === '\u200B' || textContent === ' ';
+          const isSpaceNode = textContent === '\u200B' || textContent === ' ' || textContent === '\u00A0';
           
           if (isAtStart || isSpaceNode) {
             const potentialMathField = range.startContainer.previousSibling;
@@ -312,7 +312,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           // Check if we're in a space between math fields and at the end, or just a single-char space
           const textContent = range.startContainer.textContent || '';
           const isAtEnd = range.startOffset === textContent.length;
-          const isSpaceNode = textContent === '\u200B' || textContent === ' ';
+          const isSpaceNode = textContent === '\u200B' || textContent === ' ' || textContent === '\u00A0';
           
           if (isAtEnd || isSpaceNode) {
             const potentialMathField = range.startContainer.nextSibling;
@@ -394,12 +394,12 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         
         const inSpaceNodeForLeft = e.key === 'ArrowLeft' && 
                                      range.startContainer.nodeType === Node.TEXT_NODE &&
-                                     (range.startContainer.textContent === '\u200B' || range.startContainer.textContent === ' ') &&
+                                     (range.startContainer.textContent === '\u200B' || range.startContainer.textContent === ' ' || range.startContainer.textContent === '\u00A0') &&
                                      range.startOffset === 0;
                                      
         const inSpaceNodeForRight = e.key === 'ArrowRight' && 
                                      range.startContainer.nodeType === Node.TEXT_NODE &&
-                                     (range.startContainer.textContent === '\u200B' || range.startContainer.textContent === ' ') &&
+                                     (range.startContainer.textContent === '\u200B' || range.startContainer.textContent === ' ' || range.startContainer.textContent === '\u00A0') &&
                                      range.startOffset === range.startContainer.textContent.length;
 
         
@@ -522,6 +522,12 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             newRange.collapse(true);
             selection.removeAllRanges();
             selection.addRange(newRange);
+
+            // Trigger input to normalize spacers and update state
+            if (editorRef.current) {
+              const event = new Event('input', { bubbles: true });
+              editorRef.current.dispatchEvent(event);
+            }
           }
           return; // Stop further event handling
         } else {
@@ -2040,6 +2046,43 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           // Ensure it has a non-breaking space for cursor visibility
           if (!textContent.includes('\u00A0')) {
             element.innerHTML = '\u00A0'; // Non-breaking space
+          }
+        }
+      });
+
+      // Normalize leading spacers before math-field in list items: ensure exactly one NBSP
+      listItems.forEach(listItem => {
+        const li = listItem as HTMLElement;
+        // Skip if no children
+        if (!li.firstChild) return;
+
+        // Find first non-empty child (treat whitespace-only text nodes as spacers)
+        let cursor: ChildNode | null = li.firstChild;
+        const spacerNodes: ChildNode[] = [];
+        while (cursor) {
+          if (cursor.nodeType === Node.TEXT_NODE) {
+            const txt = (cursor as Text).data;
+            // Treat spaces, NBSP, ZWS as spacer
+            if (/^[\u0020\u00A0\u200B]*$/.test(txt)) {
+              spacerNodes.push(cursor);
+              cursor = cursor.nextSibling;
+              continue;
+            }
+          }
+          break;
+        }
+
+        if (cursor && (cursor as HTMLElement).nodeType === Node.ELEMENT_NODE && (cursor as HTMLElement).tagName === 'MATH-FIELD') {
+          // We have math-field as first meaningful content. Ensure exactly one NBSP spacer before it.
+          // Remove any existing spacer text nodes before the math-field
+          spacerNodes.forEach(node => {
+            if (node.parentNode === li) li.removeChild(node);
+          });
+          // Insert one NBSP if there's no text node immediately before math-field
+          const before = cursor.previousSibling;
+          if (!(before && before.nodeType === Node.TEXT_NODE && (before as Text).data === '\u00A0')) {
+            const nbsp = document.createTextNode('\u00A0');
+            li.insertBefore(nbsp, cursor);
           }
         }
       });
