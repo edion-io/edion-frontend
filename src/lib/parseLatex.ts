@@ -28,46 +28,150 @@ const htmlEscape = (text: string): string => {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+const htmlAttributeEscape = (text: string): string => {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 };
 
-const processInline = (s: string): string => {
-  // Inline math \( ... \)
-  s = s.replace(/\\\(([\s\S]*?)\\\)/g, (_m, latex) => {
-    const value = (latex || '').trim();
-    return `<math-field class="math-field" data-latex="${value}"></math-field>`;
-  });
+const processInline = (input: string): string => {
+  type InlineState = { highlightColor: string };
 
-  // \textcolor{#RRGGBB}{...}
-  s = s.replace(/\\textcolor\{(#[0-9a-fA-F]{6})\}\{([\s\S]*?)\}/g, (_m, color, inner) => {
-    return `<span style="color: ${color}">${processInline(inner)}</span>`;
-  });
-
-  // Track nearest preceding \sethlcolor for \hl blocks within same string segment by simple backscan
-  const resolveHl = (input: string): string => {
-    // Find last \sethlcolor{...} before each \hl occurrence
-    return input.replace(/(.*?)(\\hl\{([\s\S]*?)\})/g, (m, before, _hlAll, inner) => {
-      const colorMatch = before.match(/\\sethlcolor\{([^}]+)\}[^\\]*$/);
-      let colorHex = '#ffff99';
-      if (colorMatch) {
-        // Accept hex-like or named; if named, we cannot resolve reliably here, default.
-        const val = colorMatch[1];
-        if (/^#[0-9a-fA-F]{6}$/.test(val)) colorHex = val;
+  const parseBracedContent = (src: string, start: number): { content: string; nextIndex: number } | null => {
+    if (src[start] !== '{') return null;
+    let depth = 0;
+    let i = start;
+    for (; i < src.length; i++) {
+      const ch = src[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          return { content: src.slice(start + 1, i), nextIndex: i + 1 };
+        }
       }
-      return `${before}<span style="background-color: ${colorHex}">${processInline(inner)}</span>`;
-    });
+    }
+    return null;
   };
 
-  // \hl{...} -> background (use resolveHl to prefer nearby sethlcolor)
-  s = resolveHl(s);
+  const process = (s: string, state: InlineState): string => {
+    let i = 0;
+    const out: string[] = [];
 
-  // \textbf{...}, \textit{...}, \underline{...}
-  s = s.replace(/\\textbf\{([\s\S]*?)\}/g, (_m, inner) => `<strong>${processInline(inner)}</strong>`);
-  s = s.replace(/\\textit\{([\s\S]*?)\}/g, (_m, inner) => `<em>${processInline(inner)}</em>`);
-  s = s.replace(/\\underline\{([\s\S]*?)\}/g, (_m, inner) => `<u>${processInline(inner)}</u>`);
+    const pushEscaped = (text: string) => {
+      if (!text) return;
+      out.push(htmlEscape(text));
+    };
 
-  // Basic escapes from build side (keep literal backslashes for now)
-  return s;
+    while (i < s.length) {
+      // Inline math: \( ... \)
+      if (s[i] === '\\' && s[i + 1] === '(') {
+        const end = s.indexOf('\\)', i + 2);
+        if (end !== -1) {
+          const latex = s.slice(i + 2, end).trim();
+          const escaped = htmlAttributeEscape(latex);
+          out.push(`<math-field class="math-field" data-latex="${escaped}"></math-field>`);
+          i = end + 2;
+          continue;
+        }
+      }
+
+      // \sethlcolor{#RRGGBB}
+      if (s.startsWith('\\sethlcolor{', i)) {
+        const brace = parseBracedContent(s, i + '\\sethlcolor'.length);
+        if (brace) {
+          const val = brace.content.trim();
+          if (/^#[0-9a-fA-F]{6}$/.test(val)) state.highlightColor = val;
+          i = brace.nextIndex;
+          continue;
+        }
+      }
+
+      // \hl{...}
+      if (s.startsWith('\\hl{', i)) {
+        const brace = parseBracedContent(s, i + '\\hl'.length);
+        if (brace) {
+          const inner = process(brace.content, state);
+          out.push(`<span style="background-color: ${state.highlightColor}">${inner}</span>`);
+          i = brace.nextIndex;
+          continue;
+        }
+      }
+
+      // \textcolor{#RRGGBB}{...}
+      if (s.startsWith('\\textcolor{', i)) {
+        const colorBrace = parseBracedContent(s, i + '\\textcolor'.length);
+        if (colorBrace) {
+          const color = colorBrace.content.trim();
+          const nextChar = s[colorBrace.nextIndex];
+          if (nextChar === '{') {
+            const innerBrace = parseBracedContent(s, colorBrace.nextIndex);
+            if (innerBrace) {
+              const inner = process(innerBrace.content, state);
+              out.push(`<span style="color: ${color}">${inner}</span>`);
+              i = innerBrace.nextIndex;
+              continue;
+            }
+          }
+        }
+      }
+
+      // \textbf{...}
+      if (s.startsWith('\\textbf{', i)) {
+        const brace = parseBracedContent(s, i + '\\textbf'.length);
+        if (brace) {
+          const inner = process(brace.content, state);
+          out.push(`<strong>${inner}</strong>`);
+          i = brace.nextIndex;
+          continue;
+        }
+      }
+
+      // \textit{...}
+      if (s.startsWith('\\textit{', i)) {
+        const brace = parseBracedContent(s, i + '\\textit'.length);
+        if (brace) {
+          const inner = process(brace.content, state);
+          out.push(`<em>${inner}</em>`);
+          i = brace.nextIndex;
+          continue;
+        }
+      }
+
+      // \underline{...}
+      if (s.startsWith('\\underline{', i)) {
+        const brace = parseBracedContent(s, i + '\\underline'.length);
+        if (brace) {
+          const inner = process(brace.content, state);
+          out.push(`<u>${inner}</u>`);
+          i = brace.nextIndex;
+          continue;
+        }
+      }
+
+      // Fallback: accumulate plain text until next backslash or end
+      const nextSpecial = s.indexOf('\\', i);
+      if (nextSpecial === -1) {
+        pushEscaped(s.slice(i));
+        break;
+      } else {
+        pushEscaped(s.slice(i, nextSpecial));
+        i = nextSpecial;
+      }
+    }
+
+    return out.join('');
+  };
+
+  return process(input, { highlightColor: '#ffff99' });
 };
 
 const parseTable = (block: string): string => {
@@ -104,14 +208,14 @@ const parseTable = (block: string): string => {
   table.push(`<table class="editor-table" data-rows="${Math.max(1 + bodyRows.length, 1)}" data-cols="${cols || headerCells.length}">`);
   table.push('<thead><tr>');
   headerCells.forEach((c, i) => {
-    table.push(`<th contenteditable="true">${htmlEscape(processInline(c)) || `Header ${i + 1}`}</th>`);
+    table.push(`<th contenteditable="true">${processInline(c) || `Header ${i + 1}`}</th>`);
   });
   table.push('</tr></thead>');
 
   table.push('<tbody>');
   bodyRows.forEach(r => {
     table.push('<tr>');
-    r.forEach(c => table.push(`<td contenteditable="true">${htmlEscape(processInline(c)) || 'Cell'}</td>`));
+    r.forEach(c => table.push(`<td contenteditable="true">${processInline(c) || 'Cell'}</td>`));
     table.push('</tr>');
   });
   table.push('</tbody></table>');
@@ -163,23 +267,26 @@ export const parseLatexToHtml = (latexDocument: string): string => {
       const processed = processInline(raw);
       // Determine LI marker classes and color from label (for ordered lists)
       let liClasses: string[] = [];
-      let liStyle = '';
       const label = matches[i].label || '';
       if (label) {
         if (/\\textbf/.test(label)) liClasses.push('marker-bold');
         if (/\\textit/.test(label)) liClasses.push('marker-italic');
         if (/\\underline/.test(label)) liClasses.push('marker-underline');
-        const colorMatch = label.match(/\\textcolor\{(#[0-9a-fA-F]{6})\}/);
-        if (colorMatch) {
-          liStyle = ` style=\"--marker-color: ${colorMatch[1]}\"`;
-        }
       }
       const classAttr = liClasses.length ? ` class=\"${liClasses.join(' ')}\"` : '';
-      const indentStyle = i === 0 && leadingIndentPx > 0 ? ` style=\"--indent-level: ${leadingIndentPx}px\"` : '';
-      const combinedStyle = liStyle
-        ? (indentStyle ? ` style=\"--marker-color: ${liStyle.split(': ')[1].replace('"', '')}; --indent-level: ${leadingIndentPx}px\"` : liStyle)
-        : indentStyle;
-      const styleAttr = combinedStyle ? combinedStyle : '';
+      const styleProps: Record<string, string> = {};
+      if (i === 0 && leadingIndentPx > 0) {
+        styleProps['--indent-level'] = `${leadingIndentPx}px`;
+      }
+      if (label) {
+        const colorMatch = label.match(/\\textcolor\{(#[0-9a-fA-F]{6})\}/);
+        if (colorMatch) {
+          styleProps['--marker-color'] = colorMatch[1];
+        }
+      }
+      const styleAttr = Object.keys(styleProps).length > 0
+        ? ` style=\"${Object.entries(styleProps).map(([k, v]) => `${k}: ${v}`).join('; ')}\"`
+        : '';
       items.push(`<li${classAttr}${styleAttr}>${processed || '<br>'}</li>`);
     }
     if (type === 'enumerate') {

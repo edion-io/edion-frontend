@@ -3,6 +3,10 @@ import { Button } from "../ui/button";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import { useState } from "react";
 
+/**
+ * Controlled view of a LaTeX document.
+ * Parent components MUST update `latexDocument` in response to `onChange`.
+ */
 interface LatexViewProps {
   latexDocument: string;
   onChange?: (latex: string) => void;
@@ -55,6 +59,7 @@ const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
         ref={textareaRef}
         value={latexDocument}
         onChange={handleTextChange}
+        readOnly={!onChange}
         className="flex-grow p-4 bg-secondary font-mono text-sm rounded-md resize-none focus:outline-none focus:ring-1 focus:ring-primary"
         style={{ minHeight: "300px" }}
       />
