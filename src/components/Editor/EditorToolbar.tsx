@@ -33,6 +33,7 @@ interface EditorToolbarProps {
   editorRef: React.RefObject<HTMLDivElement>;
   onNewListCreated?: () => void;
   onFormatCommandReady?: (execFormatCommand: (command: string, value?: string) => void) => void;
+  onApplyLatexFormat?: (command: string, value?: string) => void;
 }
 
 type TextAlignment = 'left' | 'center' | 'right';
@@ -301,7 +302,8 @@ const EditorToolbar = ({
   onOutdent,
   editorRef,
   onNewListCreated,
-  onFormatCommandReady
+  onFormatCommandReady,
+  onApplyLatexFormat
 }: EditorToolbarProps) => {
   // Track formatting states
   const [isBulletList, setIsBulletList] = useState(false);
@@ -2274,7 +2276,11 @@ const EditorToolbar = ({
             <Toggle 
               aria-label="Toggle bold" 
               onClick={() => {
-                execFormatCommand('bold');
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('bold');
+                } else {
+                  execFormatCommand('bold');
+                }
               }}
               pressed={isBold}
               data-state={isBold ? 'on' : 'off'}
@@ -2290,7 +2296,11 @@ const EditorToolbar = ({
             <Toggle 
               aria-label="Toggle italic" 
               onClick={() => {
-                execFormatCommand('italic');
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('italic');
+                } else {
+                  execFormatCommand('italic');
+                }
               }}
               pressed={isItalic}
               data-state={isItalic ? 'on' : 'off'}
@@ -2306,7 +2316,11 @@ const EditorToolbar = ({
             <Toggle 
               aria-label="Toggle underline" 
               onClick={() => {
-                execFormatCommand('underline');
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('underline');
+                } else {
+                  execFormatCommand('underline');
+                }
               }}
               pressed={isUnderline}
               data-state={isUnderline ? 'on' : 'off'}
@@ -2326,7 +2340,13 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <Toggle 
               aria-label="Align left" 
-              onClick={() => handleAlignment('justifyLeft')}
+              onClick={() => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('justifyLeft');
+                } else {
+                  handleAlignment('justifyLeft');
+                }
+              }}
               pressed={textAlignment === 'left'}
               data-state={textAlignment === 'left' ? 'on' : 'off'}
               className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
@@ -2340,7 +2360,13 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <Toggle 
               aria-label="Align center" 
-              onClick={() => handleAlignment('justifyCenter')}
+              onClick={() => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('justifyCenter');
+                } else {
+                  handleAlignment('justifyCenter');
+                }
+              }}
               pressed={textAlignment === 'center'}
               data-state={textAlignment === 'center' ? 'on' : 'off'}
               className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
@@ -2354,7 +2380,13 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <Toggle 
               aria-label="Align right" 
-              onClick={() => handleAlignment('justifyRight')}
+              onClick={() => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('justifyRight');
+                } else {
+                  handleAlignment('justifyRight');
+                }
+              }}
               pressed={textAlignment === 'right'}
               data-state={textAlignment === 'right' ? 'on' : 'off'}
               className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
@@ -2374,7 +2406,13 @@ const EditorToolbar = ({
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={onOutdent}
+              onClick={(e) => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('outdent');
+                } else {
+                  onOutdent();
+                }
+              }}
               className="flex items-center gap-1"
             >
               <Outdent className="h-4 w-4" />
@@ -2387,7 +2425,13 @@ const EditorToolbar = ({
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={onIndent}
+              onClick={(e) => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('indent');
+                } else {
+                  onIndent();
+                }
+              }}
               className="flex items-center gap-1"
             >
               <Indent className="h-4 w-4" />
@@ -2404,7 +2448,13 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <Toggle
               aria-label="Bullet list"
-              onClick={() => handleListFormatting('UL')}
+              onClick={() => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('insertUnorderedList');
+                } else {
+                  handleListFormatting('UL');
+                }
+              }}
               pressed={isBulletList}
               data-state={isBulletList ? 'on' : 'off'}
               className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
@@ -2418,7 +2468,13 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <Toggle
               aria-label="Numbered list"
-              onClick={() => handleListFormatting('OL')}
+              onClick={() => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('insertOrderedList');
+                } else {
+                  handleListFormatting('OL');
+                }
+              }}
               pressed={isNumberedList}
               data-state={isNumberedList ? 'on' : 'off'}
               className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
@@ -2437,7 +2493,13 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <ColorPicker 
               key={`text-color-${currentTextColorRef.current}-${colorVersion}`}
-              onSelectColor={applyTextColor}
+              onSelectColor={(color) => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('foreColor', color);
+                } else {
+                  applyTextColor(color);
+                }
+              }}
               triggerIcon={<TextColorIcon className="h-4 w-4" color={currentTextColorRef.current} />}
               label="Text color"
               initialColor={currentTextColorRef.current}
@@ -2451,7 +2513,13 @@ const EditorToolbar = ({
           <TooltipTrigger asChild>
             <ColorPicker 
               key={`highlight-color-${currentHighlightColorRef.current}-${colorVersion}`}
-              onSelectColor={applyHighlightColor}
+              onSelectColor={(color) => {
+                if (showRawLatex) {
+                  onApplyLatexFormat?.('hiliteColor', color);
+                } else {
+                  applyHighlightColor(color);
+                }
+              }}
               triggerIcon={
                 <div className="relative">
                   <Highlighter className="h-4 w-4" />

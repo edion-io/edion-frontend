@@ -175,6 +175,86 @@ const EditorPage = () => {
           editorRef={editorRef}
           onNewListCreated={handleNewListCreated}
           onFormatCommandReady={handleFormatCommandReady}
+          onApplyLatexFormat={(cmd, fmtValue) => {
+            // Apply LaTeX formatting to selection in LatexView's textarea
+            const textarea = document.querySelector('textarea') as HTMLTextAreaElement | null;
+            // Fallback: any textarea inside LatexView
+            const fallback = document.querySelector('.font-mono') as HTMLTextAreaElement | null;
+            const el = textarea || fallback;
+            if (!el) return;
+            const start = el.selectionStart;
+            const end = el.selectionEnd;
+            if (start == null || end == null) return;
+            const latexText = el.value;
+            const selected = start === end ? '' : latexText.slice(start, end);
+            let wrapped = selected;
+            switch (cmd) {
+              case 'bold':
+                wrapped = `\\textbf{${selected || ''}}`;
+                break;
+              case 'italic':
+                wrapped = `\\textit{${selected || ''}}`;
+                break;
+              case 'underline':
+                wrapped = `\\underline{${selected || ''}}`;
+                break;
+              case 'justifyLeft': {
+                // remove existing center/flushright around selection, no wrapper needed
+                wrapped = selected.replace(/\\begin\{center\}|\\end\{center\}|\\begin\{flushright\}|\\end\{flushright\}/g, '');
+                break;
+              }
+              case 'justifyCenter':
+                wrapped = `\\begin{center}${selected}\\end{center}`;
+                break;
+              case 'justifyRight':
+                wrapped = `\\begin{flushright}${selected}\\end{flushright}`;
+                break;
+              case 'indent':
+                wrapped = `\\hspace*{2em}${selected}`;
+                break;
+              case 'outdent':
+                wrapped = selected.replace(/^\\hspace\*\{[0-9.]+em\}/, '');
+                break;
+              case 'insertUnorderedList':
+                wrapped = `\\begin{itemize}[leftmargin=*]\n\\item ${selected || ''}\n\\end{itemize}`;
+                break;
+              case 'insertOrderedList':
+                wrapped = `\\begin{enumerate}[leftmargin=*]\n\\item ${selected || ''}\n\\end{enumerate}`;
+                break;
+              case 'foreColor':
+                if (fmtValue) {
+                  wrapped = `\\textcolor{${fmtValue}}{${selected || ''}}`;
+                }
+                break;
+              case 'hiliteColor':
+                if (fmtValue) {
+                  const hex = (fmtValue as string).replace('#','');
+                  wrapped = `\\definecolor{highlightcolor}{HTML}{${hex}}\n\\sethlcolor{highlightcolor}\n\\hl{${selected || ''}}`;
+                }
+                break;
+              default:
+                return;
+            }
+            const next = latexText.slice(0, start) + wrapped + latexText.slice(end);
+            setLatexDocument(next);
+            // Update WYSIWYG by parsing
+            const newHtml = parseLatexToHtml(next);
+            setContent(newHtml);
+            if (editorRef.current) {
+              editorRef.current.innerHTML = newHtml;
+              const event = new Event('input', { bubbles: true });
+              editorRef.current.dispatchEvent(event);
+            }
+            // restore selection to end of wrapped
+            const pos = start + wrapped.length;
+            requestAnimationFrame(() => {
+              const el2 = textarea || fallback;
+              if (el2) {
+                el2.focus();
+                el2.setSelectionRange(pos, pos);
+              }
+            });
+          }}
         />
         
         {!showRawLatex ? (

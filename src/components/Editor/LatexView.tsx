@@ -1,7 +1,6 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/button";
 import { Clipboard, ClipboardCheck } from "lucide-react";
-import { useState } from "react";
 
 /**
  * Controlled view of a LaTeX document.
@@ -15,6 +14,12 @@ interface LatexViewProps {
 const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Undo/redo stacks for controlled textarea
+  const undoStackRef = useRef<string[]>([]);
+  const redoStackRef = useRef<string[]>([]);
+  const lastPushedRef = useRef<string | null>(null);
+  const applyingUndoRedoRef = useRef<boolean>(false);
+  const MAX_HISTORY = 200;
   
   const copyToClipboard = async () => {
     if (textareaRef.current) {
@@ -29,6 +34,58 @@ const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
   };
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange?.(e.target.value);
+  };
+
+  // Track value changes to build undo history (captures typing and programmatic edits)
+  useEffect(() => {
+    if (applyingUndoRedoRef.current) {
+      applyingUndoRedoRef.current = false;
+      lastPushedRef.current = latexDocument;
+      return;
+    }
+    if (lastPushedRef.current === null) {
+      undoStackRef.current = [latexDocument];
+      redoStackRef.current = [];
+      lastPushedRef.current = latexDocument;
+      return;
+    }
+    if (lastPushedRef.current !== latexDocument) {
+      undoStackRef.current.push(latexDocument);
+      if (undoStackRef.current.length > MAX_HISTORY) {
+        undoStackRef.current.shift();
+      }
+      redoStackRef.current = [];
+      lastPushedRef.current = latexDocument;
+    }
+  }, [latexDocument]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    const key = e.key.toLowerCase();
+    // Undo
+    if (mod && key === 'z' && !e.shiftKey) {
+      if (undoStackRef.current.length > 1) {
+        e.preventDefault();
+        const current = undoStackRef.current.pop() as string;
+        redoStackRef.current.push(current);
+        const prev = undoStackRef.current[undoStackRef.current.length - 1];
+        applyingUndoRedoRef.current = true;
+        onChange?.(prev);
+      }
+      return;
+    }
+    // Redo: Ctrl+Shift+Z or Ctrl+Y
+    if (mod && ((key === 'z' && e.shiftKey) || key === 'y')) {
+      if (redoStackRef.current.length > 0) {
+        e.preventDefault();
+        const next = redoStackRef.current.pop() as string;
+        undoStackRef.current.push(next);
+        applyingUndoRedoRef.current = true;
+        onChange?.(next);
+      }
+      return;
+    }
   };
   
   return (
@@ -59,6 +116,7 @@ const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
         ref={textareaRef}
         value={latexDocument}
         onChange={handleTextChange}
+        onKeyDown={handleKeyDown}
         readOnly={!onChange}
         className="flex-grow p-4 bg-secondary font-mono text-sm rounded-md resize-none focus:outline-none focus:ring-1 focus:ring-primary"
         style={{ minHeight: "300px" }}
