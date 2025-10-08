@@ -3,6 +3,7 @@ import EditorToolbar from './EditorToolbar';
 import RichTextArea from './RichTextArea';
 import LatexView from './LatexView';
 import { buildLatexDocument } from '../../lib/buildLatex';
+import { parseLatexToHtml } from '../../lib/parseLatex';
 import useInlineMath from '../../hooks/useInlineMath';
 
 const EditorPage = () => {
@@ -29,6 +30,24 @@ const EditorPage = () => {
   // Toggle raw LaTeX view
   const toggleRawLatex = () => {
     setShowRawLatex(!showRawLatex);
+  };
+
+  // When LaTeX view is edited, parse back to HTML and update the editor content
+  const handleLatexChange = (updatedLatex: string) => {
+    try {
+      const newHtml = parseLatexToHtml(updatedLatex);
+      setContent(newHtml);
+      setLatexDocument(updatedLatex);
+      // Push to the live editor DOM if mounted
+      if (editorRef.current) {
+        editorRef.current.innerHTML = newHtml;
+        const event = new Event('input', { bubbles: true });
+        editorRef.current.dispatchEvent(event);
+      }
+    } catch (_e) {
+      // If parsing fails, keep LaTeX text without breaking the UI
+      setLatexDocument(updatedLatex);
+    }
   };
 
   // Callback for when a new list is created to fix cursor
@@ -168,7 +187,7 @@ const EditorPage = () => {
             />
           </div>
         ) : (
-          <LatexView latexDocument={latexDocument} />
+          <LatexView latexDocument={latexDocument} onChange={handleLatexChange} />
         )}
       </main>
     </div>

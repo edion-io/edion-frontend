@@ -5,9 +5,10 @@ import { useState } from "react";
 
 interface LatexViewProps {
   latexDocument: string;
+  onChange?: (latex: string) => void;
 }
 
-const LatexView = ({ latexDocument }: LatexViewProps) => {
+const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
@@ -21,6 +22,9 @@ const LatexView = ({ latexDocument }: LatexViewProps) => {
         console.error('Failed to copy text: ', err);
       }
     }
+  };
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onChange?.(e.target.value);
   };
   
   return (
@@ -50,7 +54,7 @@ const LatexView = ({ latexDocument }: LatexViewProps) => {
       <textarea
         ref={textareaRef}
         value={latexDocument}
-        readOnly
+        onChange={handleTextChange}
         className="flex-grow p-4 bg-secondary font-mono text-sm rounded-md resize-none focus:outline-none focus:ring-1 focus:ring-primary"
         style={{ minHeight: "300px" }}
       />

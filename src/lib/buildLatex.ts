@@ -119,20 +119,63 @@ const processNode = (
     
     // Handle lists
     if (element.tagName === 'UL') {
-      callback('\n\\begin{itemize}[leftmargin=*]\n', false, [], listContext, true);
+      // Alignment wrappers for lists
+      const listAlign = (element as HTMLElement).style.textAlign || '';
+      if (listAlign === 'center') {
+        callback('\n\\begin{center}\n', false, [], listContext, true);
+      } else if (listAlign === 'right') {
+        callback('\n\\begin{flushright}\n', false, [], listContext, true);
+      }
+      // Determine UL style -> enumitem label
+      const classes = Array.from(element.classList || []);
+      let options = 'leftmargin=*';
+      if (classes.includes('list-circle')) {
+        options = `${options},label=$\\circ$`;
+      } else if (classes.includes('list-square')) {
+        options = `${options},label=$\\blacksquare$`;
+      }
+      callback(`\n\\begin{itemize}[${options}]\n`, false, [], listContext, true);
       for (let i = 0; i < element.childNodes.length; i++) {
         processNode(element.childNodes[i], callback, formattingTags, 'itemize');
       }
       callback('\n\\end{itemize}\n', false, [], listContext, true);
+      if (listAlign === 'center') {
+        callback('\\end{center}\n', false, [], listContext, true);
+      } else if (listAlign === 'right') {
+        callback('\\end{flushright}\n', false, [], listContext, true);
+      }
       return;
     }
     
     if (element.tagName === 'OL') {
-      callback('\n\\begin{enumerate}[leftmargin=*]\n', false, [], listContext, true);
+      // Alignment wrappers for lists
+      const listAlign = (element as HTMLElement).style.textAlign || '';
+      if (listAlign === 'center') {
+        callback('\n\\begin{center}\n', false, [], listContext, true);
+      } else if (listAlign === 'right') {
+        callback('\n\\begin{flushright}\n', false, [], listContext, true);
+      }
+      // Determine OL style -> enumitem label
+      const classes = Array.from(element.classList || []);
+      let options = 'leftmargin=*';
+      if (classes.includes('list-alpha')) {
+        options = `${options},label=\\alph*.`;
+      } else if (classes.includes('list-roman')) {
+        options = `${options},label=\\roman*.`;
+      } else if (classes.includes('list-decimal')) {
+        // explicit decimal if present (optional)
+        // options = `${options},label=\\arabic*.`;
+      }
+      callback(`\n\\begin{enumerate}[${options}]\n`, false, [], listContext, true);
       for (let i = 0; i < element.childNodes.length; i++) {
         processNode(element.childNodes[i], callback, formattingTags, 'enumerate');
       }
       callback('\n\\end{enumerate}\n', false, [], listContext, true);
+      if (listAlign === 'center') {
+        callback('\\end{center}\n', false, [], listContext, true);
+      } else if (listAlign === 'right') {
+        callback('\\end{flushright}\n', false, [], listContext, true);
+      }
       return;
     }
     
@@ -145,6 +188,7 @@ const processNode = (
         const hasMarkerBold = element.classList.contains('marker-bold');
         const hasMarkerItalic = element.classList.contains('marker-italic');
         const hasMarkerUnderline = element.classList.contains('marker-underline');
+        const markerColor = (element as HTMLElement).style.getPropertyValue('--marker-color');
         
         if (hasMarkerBold || hasMarkerItalic || hasMarkerUnderline) {
           // Use LaTeX's \item[custom] feature to specify formatted counters
@@ -160,16 +204,32 @@ const processNode = (
             markerFormat = `\\underline{${markerFormat}}`;
           }
           
-          callback(`\\item[${markerFormat}.] `, false, [], listContext, true);
+          if (markerColor) {
+            // ensure hex or valid color
+            callback(`\\item[\\textcolor{${markerColor}}{${markerFormat}.}] `, false, [], listContext, true);
+          } else {
+            callback(`\\item[${markerFormat}.] `, false, [], listContext, true);
+          }
         } else {
-          // Standard numbered list item
-          callback('\\item ', false, [], listContext, true);
+          // Standard numbered list item, with optional color
+          if (markerColor) {
+            callback(`\\item[\\textcolor{${markerColor}}{\\arabic*.}] `, false, [], listContext, true);
+          } else {
+            callback('\\item ', false, [], listContext, true);
+          }
         }
       } else {
         // For unordered lists: Normal \item processing
-      callback('\\item ', false, [], listContext, true);
+        callback('\\item ', false, [], listContext, true);
       }
       
+      // Indentation for list items via hspace based on --indent-level
+      const liIndentPx = parseInt((element as HTMLElement).style.getPropertyValue('--indent-level') || '0', 10) || 0;
+      if (liIndentPx > 0) {
+        const em = (liIndentPx / 16).toFixed(2);
+        callback(`\\hspace*{${em}em}`, false, [], listContext, true);
+      }
+
       // Process all child nodes
       for (let i = 0; i < element.childNodes.length; i++) {
         processNode(element.childNodes[i], callback, formattingTags, listContext);
@@ -179,10 +239,23 @@ const processNode = (
       return;
     }
     
-    // Handle paragraph and div elements - add newline before and after
+    // Handle paragraph and div elements - add newline and alignment/indentation
     if (element.tagName === 'P' || element.tagName === 'DIV') {
       if (element.previousElementSibling) {
         callback('\n\n', false, [], listContext);
+      }
+      // Alignment wrappers for paragraphs
+      const paraAlign = (element as HTMLElement).style.textAlign || '';
+      if (paraAlign === 'center') {
+        callback('\\begin{center}', false, [], listContext, true);
+      } else if (paraAlign === 'right') {
+        callback('\\begin{flushright}', false, [], listContext, true);
+      }
+      // Indentation via hspace for paragraphs
+      const paddingLeftPx = parseInt((element as HTMLElement).style.paddingLeft || '0', 10) || 0;
+      if (paddingLeftPx > 0) {
+        const em = (paddingLeftPx / 16).toFixed(2);
+        callback(`\\hspace*{${em}em}`, false, [], listContext, true);
       }
     }
     
@@ -192,23 +265,22 @@ const processNode = (
       newFormattingTags.push(element.tagName.toLowerCase());
     }
     
-    // Handle text with colors - created with 'foreColor' command
-    const computedStyle = window.getComputedStyle(element);
-    const textColor = element.style.color || computedStyle.color;
-    const bgColor = element.style.backgroundColor || computedStyle.backgroundColor;
+    // Handle text and background colors robustly (inline style + <font color="...">)
+    const textColorAttr = (element as HTMLElement).style.color || (element.tagName === 'FONT' ? (element as HTMLElement).getAttribute('color') || '' : '');
+    const bgColorAttr = (element as HTMLElement).style.backgroundColor || '';
     
     // If element has a text color or background color, create color command wrappers
     let colorPrefix = '';
     let colorSuffix = '';
     
-    if (textColor && textColor !== 'rgb(0, 0, 0)' && textColor !== '#000000') {
-      const hexColor = rgbToHex(textColor);
+    if (textColorAttr && rgbToHex(normalizeColor(textColorAttr)).toLowerCase() !== '#000000') {
+      const hexColor = rgbToHex(normalizeColor(textColorAttr));
       colorPrefix += `\\textcolor{${hexColor}}{`;
       colorSuffix = `}${colorSuffix}`;
     }
     
-    if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') {
-      const hexColor = rgbToHex(bgColor);
+    if (bgColorAttr && bgColorAttr !== 'rgba(0, 0, 0, 0)' && bgColorAttr !== 'transparent') {
+      const hexColor = rgbToHex(normalizeColor(bgColorAttr));
       colorPrefix += `\\hl{`;
       colorSuffix = `}${colorSuffix}`;
       // Add a color definition for highlighting
@@ -230,8 +302,14 @@ const processNode = (
       callback(colorSuffix, false, [], listContext, true);
     }
     
-    // Add a newline after paragraphs and divs
+    // Close alignment wrappers and add newline after paragraphs and divs
     if (element.tagName === 'P' || element.tagName === 'DIV') {
+      const paraAlign = (element as HTMLElement).style.textAlign || '';
+      if (paraAlign === 'center') {
+        callback('\\end{center}', false, [], listContext, true);
+      } else if (paraAlign === 'right') {
+        callback('\\end{flushright}', false, [], listContext, true);
+      }
       if (element.nextElementSibling) {
         callback('\n\n', false, [], listContext);
       }
@@ -378,3 +456,24 @@ const rgbToHex = (rgb: string): string => {
   // Convert to hex
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }; 
+
+/** Normalize CSS color strings into a hex string when possible. */
+const normalizeColor = (value: string): string => {
+  if (!value) return '#000000';
+  const v = value.trim().toLowerCase();
+  if (v.startsWith('#')) return v;
+  // Named colors minimal map
+  const map: Record<string, string> = {
+    black: '#000000', white: '#ffffff', red: '#ff0000', lime: '#00ff00', green: '#008000', blue: '#0000ff',
+    yellow: '#ffff00', cyan: '#00ffff', magenta: '#ff00ff', gray: '#808080', grey: '#808080',
+    silver: '#c0c0c0', maroon: '#800000', olive: '#808000', purple: '#800080', teal: '#008080', navy: '#000080'
+  };
+  if (map[v]) return map[v];
+  // rgb/rgba
+  const m = v.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:,\s*([\d.]+))?\)/);
+  if (m) {
+    const r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
+    return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+  }
+  return '#000000';
+};
