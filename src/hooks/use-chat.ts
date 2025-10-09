@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatTab, ChatHistoryItem, UserSettings } from '../types';
+import { getDeterministicResponse } from '../lib/intentMappings';
 import { showChatDeletedToast, showErrorToast } from '../utils/toastUtils';
 
 export const useChat = (userSettings: UserSettings) => {
@@ -14,6 +15,8 @@ export const useChat = (userSettings: UserSettings) => {
   const [activeTabId, setActiveTabId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [inputValue, setInputValue] = useState('');
+  const [showEditorSplit, setShowEditorSplit] = useState(false);
+  const [editorLatex, setEditorLatex] = useState<string | null>(null);
 
   // Load chat history from localStorage
   useEffect(() => {
@@ -102,6 +105,16 @@ export const useChat = (userSettings: UserSettings) => {
       localStorage.setItem('chatTabs', JSON.stringify([defaultTab]));
     }
     
+    // If navigation requested opening editor with LaTeX, honor it
+    if (initialState.openEditorWithLatex && typeof initialState.openEditorWithLatex === 'string') {
+      setShowEditorSplit(true);
+      setEditorLatex(initialState.openEditorWithLatex);
+    }
+    if (initialState.latexContent && typeof initialState.latexContent === 'string') {
+      setShowEditorSplit(true);
+      setEditorLatex(initialState.latexContent);
+    }
+
     setIsLoading(false);
   }, [initialState.selectedChatId, initialState.initialQuery]);
 
@@ -326,6 +339,10 @@ export const useChat = (userSettings: UserSettings) => {
     handleNewTab,
     handleTabClose,
     handleDeleteChat,
+    showEditorSplit,
+    setShowEditorSplit,
+    editorLatex,
+    setEditorLatex,
     navigate
   }), [
     showHistory, 
@@ -338,6 +355,8 @@ export const useChat = (userSettings: UserSettings) => {
     handleNewTab, 
     handleTabClose, 
     handleDeleteChat, 
+    showEditorSplit,
+    editorLatex,
     navigate
   ]);
 }; 

@@ -338,22 +338,16 @@ export const parseLatexToHtml = (latexDocument: string): string => {
     htmlParts.push('<p><br></p>');
   } else {
     paras.forEach(p => {
-      // Restore tables inside paragraphs if any
-      let segment = p.replace(/__TABLE_PLACEHOLDER_(\d+)__/g, (_m, idxStr) => {
-        const idx = parseInt(idxStr, 10);
-        return parseTable(tables[idx]);
-      });
-      // Restore lists inside paragraphs if any
-      segment = segment.replace(/__LIST_PLACEHOLDER_(\d+)__/g, (_m, idxStr) => {
-        const idx = parseInt(idxStr, 10);
-        return listHtmlSnippets[idx];
-      });
-      // Paragraph-level alignment and indentation
+      // Restore tables and lists via ordered tokenization
+      let segment = p;
+
+      // Paragraph-level alignment and indentation markers
       let align = '';
       if (segment.includes('__ALIGN_CENTER_BEGIN__') && segment.includes('__ALIGN_CENTER_END__')) align = 'center';
       if (segment.includes('__ALIGN_RIGHT_BEGIN__') && segment.includes('__ALIGN_RIGHT_END__')) align = 'right';
       segment = segment.replace(/__ALIGN_CENTER_BEGIN__|__ALIGN_CENTER_END__|__ALIGN_RIGHT_BEGIN__|__ALIGN_RIGHT_END__/g, '');
-      // Leading hspace
+
+      // Leading hspace (paragraph indent)
       let paddingPx = 0;
       const hspacePara = segment.match(/^\\hspace\*\{([0-9.]+)em\}/);
       if (hspacePara) {
@@ -361,15 +355,29 @@ export const parseLatexToHtml = (latexDocument: string): string => {
         if (!isNaN(em)) paddingPx = Math.round(em * 16);
         segment = segment.replace(/^\\hspace\*\{[0-9.]+em\}\s*/, '');
       }
-      // Process inline constructs
-      segment = processInline(segment);
-      if (/^<table[\s\S]*<\/table>$/.test(segment) || /^(<ol[\s\S]*<\/ol>|<ul[\s\S]*<\/ul>)$/.test(segment)) {
+
+      const tokenRegex = /__TABLE_PLACEHOLDER_(\d+)__|__LIST_PLACEHOLDER_(\d+)__/g;
+      let lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = tokenRegex.exec(segment)) !== null) {
+        const before = segment.slice(lastIndex, m.index).trim();
+        if (before.length > 0) {
+          const style = align || paddingPx ? ` style=\"${align ? `text-align: ${align}; ` : ''}${paddingPx ? `padding-left: ${paddingPx}px` : ''}\"` : '';
+          htmlParts.push(`<p${style}>${processInline(before) || '<br>'}</p>`);
+        }
+        if (m[1] !== undefined) {
+          const idx = parseInt(m[1], 10);
+          htmlParts.push(parseTable(tables[idx]));
+        } else if (m[2] !== undefined) {
+          const idx = parseInt(m[2], 10);
+          htmlParts.push(listHtmlSnippets[idx]);
+        }
+        lastIndex = m.index + m[0].length;
+      }
+      const after = segment.slice(lastIndex).trim();
+      if (after.length > 0) {
         const style = align || paddingPx ? ` style=\"${align ? `text-align: ${align}; ` : ''}${paddingPx ? `padding-left: ${paddingPx}px` : ''}\"` : '';
-        const wrapped = `<div${style}>${segment}</div>`;
-        htmlParts.push(wrapped + '<p><br></p>');
-      } else {
-        const style = align || paddingPx ? ` style=\"${align ? `text-align: ${align}; ` : ''}${paddingPx ? `padding-left: ${paddingPx}px` : ''}\"` : '';
-        htmlParts.push(`<p${style}>${segment || '<br>'}</p>`);
+        htmlParts.push(`<p${style}>${processInline(after) || '<br>'}</p>`);
       }
     });
   }

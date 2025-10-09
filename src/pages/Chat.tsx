@@ -7,6 +7,12 @@ import ChatMessages from '../components/ChatMessages';
 import ChatInput from '../components/ChatInput';
 import { useChat } from '../hooks/use-chat';
 import { updateUserSettings, getUserSettingsFromStorage } from '../utils/storageUtils';
+import RichTextArea from '../components/Editor/RichTextArea';
+import { parseLatexToHtml } from '../lib/parseLatex';
+import EditorToolbar from '../components/Editor/EditorToolbar';
+import useInlineMath from '../hooks/useInlineMath';
+import LatexView from '../components/Editor/LatexView';
+import { buildLatexDocument } from '../lib/buildLatex';
 
 const Chat = () => {
   const [userSettings, setUserSettings] = useState<UserSettingsType>(getUserSettingsFromStorage());
@@ -31,6 +37,10 @@ const Chat = () => {
     handleNewTab,
     handleTabClose,
     handleDeleteChat,
+    showEditorSplit,
+    setShowEditorSplit,
+    editorLatex,
+    setEditorLatex,
   } = useChat(userSettings);
 
   const getActiveTab = () => tabs.find(tab => tab.id === activeTabId);
@@ -97,7 +107,72 @@ const Chat = () => {
     };
   }, [userSettings.darkMode]);
 
+  // Editor state for split view (must be declared before any early returns)
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [editorContent, setEditorContent] = useState<string>('');
+  const { insertMathDelimiters } = useInlineMath();
+  const [execFormatCommand, setExecFormatCommand] = useState<((command: string, value?: string) => void) | null>(null);
+  const [showRawLatex, setShowRawLatex] = useState(false);
+  const suppressLatexSyncRef = useRef(false);
 
+  const handleIndent = () => {
+    document.execCommand('indent');
+  };
+
+  const handleOutdent = () => {
+    document.execCommand('outdent');
+  };
+
+  const insertTable = (rows: number, cols: number) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+    let tableHTML = '<table class="editor-table" data-rows="' + rows + '" data-cols="' + cols + '">';
+    tableHTML += '<thead><tr>' + Array.from({ length: cols }).map((_, i) => '<th contenteditable="true">Header ' + (i + 1) + '</th>').join('') + '</tr></thead>';
+    tableHTML += '<tbody>' + Array.from({ length: Math.max(rows - 1, 1) }).map(() => '<tr>' + Array.from({ length: cols }).map(() => '<td contenteditable="true">Cell</td>').join('') + '</tr>').join('') + '</tbody></table><p><br></p>';
+    document.execCommand('insertHTML', false, tableHTML);
+    if (editorRef.current) {
+      setEditorContent(editorRef.current.innerHTML);
+    }
+  };
+
+  // Populate WYSIWYG when deterministic LaTeX is set
+  useEffect(() => {
+    if (showEditorSplit && editorLatex) {
+      try {
+        const html = parseLatexToHtml(editorLatex);
+        // Prevent immediate LaTeX rebuild caused by this programmatic HTML set
+        suppressLatexSyncRef.current = true;
+        setEditorContent(html);
+        // Also update live DOM if already mounted
+        if (editorRef.current) {
+          editorRef.current.innerHTML = html;
+          const event = new Event('input', { bubbles: true });
+          editorRef.current.dispatchEvent(event);
+        }
+      } catch (_e) {
+        // If parse fails, keep split open without content update
+      }
+    }
+  }, [showEditorSplit, editorLatex]);
+
+  // Keep LaTeX in sync when WYSIWYG changes
+  useEffect(() => {
+    if (!showEditorSplit) return;
+    if (!editorRef.current) return;
+    if (suppressLatexSyncRef.current) {
+      suppressLatexSyncRef.current = false;
+      return;
+    }
+    const latestHtml = editorRef.current.innerHTML;
+    try {
+      const doc = buildLatexDocument(latestHtml);
+      setEditorLatex(doc);
+    } catch (_e) {
+      // ignore conversion failures during typing
+    }
+  }, [editorContent]);
 
   const handleEditMessage = (messageId: number, newText: string) => {
     if (messageId === -1) {
@@ -205,20 +280,60 @@ const Chat = () => {
           goToSettings={goToSettings}
         />
 
-          <div className={`flex-1 flex flex-col w-full`}>
-            <ChatMessages
-              key={`messages-${forceUpdate}`}
-              activeTab={activeTab}
-              darkMode={userSettings.darkMode}
-              onEditMessage={handleEditMessage}
-            />
-            <div className="relative">
-              <ChatInput
-                key={`input-${forceUpdate}`}
-                inputValue={inputValue}
-                setInputValue={setInputValue}
-                onSubmit={handleSubmit}
+          <div className={`flex-1 flex w-full`}>
+            {showEditorSplit ? (
+              <div className="w-1/2 border-r border-gray-200 dark:border-gray-800 p-3 flex flex-col">
+                <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Editor</div>
+                <div className="mb-2">
+                  <EditorToolbar 
+                    showRawLatex={showRawLatex}
+                    toggleRawLatex={() => setShowRawLatex(v => !v)}
+                    onInsertMath={insertMathDelimiters}
+                    onInsertTable={insertTable}
+                    onIndent={handleIndent}
+                    onOutdent={handleOutdent}
+                    editorRef={editorRef}
+                    onNewListCreated={() => {}}
+                    onFormatCommandReady={(fn) => setExecFormatCommand(() => fn)}
+                  />
+                </div>
+                {
+                  !showRawLatex ? (
+                    <div className="flex-1 bg-white dark:bg-zinc-800 rounded-md border shadow-sm">
+                      <RichTextArea
+                        content={editorContent}
+                        onChange={setEditorContent}
+                        editorRef={editorRef}
+                        onFormatCommand={execFormatCommand || undefined}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex-1 bg-white dark:bg-zinc-800 rounded-md border shadow-sm p-3">
+                      <LatexView 
+                        latexDocument={editorLatex || ''}
+                        onChange={(next) => setEditorLatex(next)}
+                      />
+                    </div>
+                  )
+                }
+              </div>
+            ) : null}
+
+            <div className={`${showEditorSplit ? 'w-1/2' : 'w-full'} flex flex-col`}>
+              <ChatMessages
+                key={`messages-${forceUpdate}`}
+                activeTab={activeTab}
+                darkMode={userSettings.darkMode}
+                onEditMessage={handleEditMessage}
               />
+              <div className="relative">
+                <ChatInput
+                  key={`input-${forceUpdate}`}
+                  inputValue={inputValue}
+                  setInputValue={setInputValue}
+                  onSubmit={handleSubmit}
+                />
+              </div>
             </div>
           </div>
         </div>
