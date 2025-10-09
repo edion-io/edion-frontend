@@ -125,6 +125,19 @@ const Chat = () => {
   const [dragOverEditor, setDragOverEditor] = useState(false);
   const [dragOverChat, setDragOverChat] = useState(false);
 
+  const handleKeyboardSwap = (pane: 'editor' | 'chat', direction: 'left' | 'right' | 'toggle') => {
+    if (direction === 'toggle') {
+      setEditorOnLeft(prev => !prev);
+      return;
+    }
+    if (pane === 'editor') {
+      setEditorOnLeft(direction === 'left');
+      return;
+    }
+    // pane === 'chat'
+    setEditorOnLeft(direction === 'right');
+  };
+
   const handleIndent = () => {
     document.execCommand('indent');
   };
@@ -333,6 +346,7 @@ const Chat = () => {
                               setDragOverChat(false);
                               document.body.classList.remove('dragging-pane');
                             }}
+                            onKeySwap={(dir) => handleKeyboardSwap('editor', dir)}
                           />
                         </div>
                         <div className="mb-2">
@@ -393,6 +407,7 @@ const Chat = () => {
                               setDragOverChat(false);
                               document.body.classList.remove('dragging-pane');
                             }}
+                            onKeySwap={(dir) => handleKeyboardSwap('chat', dir)}
                           />
                         </div>
                         <ChatMessages
@@ -439,6 +454,7 @@ const Chat = () => {
                               setDragOverChat(false);
                               document.body.classList.remove('dragging-pane');
                             }}
+                            onKeySwap={(dir) => handleKeyboardSwap('chat', dir)}
                           />
                         </div>
                         <ChatMessages
@@ -499,6 +515,7 @@ const Chat = () => {
                               setDragOverChat(false);
                               document.body.classList.remove('dragging-pane');
                             }}
+                            onKeySwap={(dir) => handleKeyboardSwap('editor', dir)}
                           />
                         </div>
                         <div className="mb-2">
