@@ -142,7 +142,6 @@ const ChatMessages: React.FC<ChatMessagesProps> = memo(({ activeTab, darkMode, o
       el.removeEventListener('scroll', handleScroll);
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
-        scrollTimeoutRef.current = null;
       }
     };
   }, []);
@@ -250,6 +249,7 @@ const ChatMessages: React.FC<ChatMessagesProps> = memo(({ activeTab, darkMode, o
   );
 }, (prevProps, nextProps) => {
   return prevProps.darkMode === nextProps.darkMode &&
+         prevProps.reserveForFixedComposer === nextProps.reserveForFixedComposer &&
          prevProps.activeTab.id === nextProps.activeTab.id &&
          prevProps.activeTab.messages === nextProps.activeTab.messages;
 });

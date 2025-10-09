@@ -294,7 +294,7 @@ const Chat = () => {
                         onDragOver={(e) => { e.preventDefault(); setDragOverEditor(true); }}
                         onDragEnter={() => setDragOverEditor(true)}
                         onDragLeave={() => setDragOverEditor(false)}
-                        onDrop={(e) => { const src = e.dataTransfer.getData('text/pane'); if (src === 'chat') setEditorOnLeft(false); setDragOverEditor(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
+                        onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'chat') setEditorOnLeft(false); setDragOverEditor(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Editor</div>
@@ -360,7 +360,7 @@ const Chat = () => {
                         onDragOver={(e) => { e.preventDefault(); setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
-                        onDrop={(e) => { const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(false); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
+                        onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(false); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
                       >
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
@@ -412,7 +412,7 @@ const Chat = () => {
                         onDragOver={(e) => { e.preventDefault(); setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
-                        onDrop={(e) => { const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(true); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
+                        onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(true); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
                       >
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
@@ -470,6 +470,7 @@ const Chat = () => {
                         onDragEnter={() => setDragOverEditor(true)}
                         onDragLeave={() => setDragOverEditor(false)}
                         onDrop={(e) => {
+                          e.preventDefault();
                           const src = e.dataTransfer.getData('text/pane');
                           if (src === 'chat') setEditorOnLeft(true);
                           setDragOverEditor(false);

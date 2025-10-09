@@ -38,7 +38,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
   const [showExpandButton, setShowExpandButton] = useState(false);
 
   const INITIAL_HEIGHT = 120;
-  const COMPOSER_BOTTOM_PADDING = 12; // Extra bottom padding for the composer
+  const COMPOSER_HEIGHT_OFFSET = 12; // Offset added when computing --composer-height (not padding on the element)
   const EXPANDED_HEIGHT = Math.round(window.innerHeight * 0.6);
 
   const toggleExpand = () => {
@@ -92,7 +92,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
     if (!el) return;
     const setVar = () => {
       const h = el.offsetHeight || 0;
-      document.documentElement.style.setProperty('--composer-height', `${h + COMPOSER_BOTTOM_PADDING}px`);
+      document.documentElement.style.setProperty('--composer-height', `${h + COMPOSER_HEIGHT_OFFSET}px`);
     };
     setVar();
     const ro = new ResizeObserver(() => setVar());
