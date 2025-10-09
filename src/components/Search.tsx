@@ -39,7 +39,15 @@ const Search = () => {
       localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
       
       // Create initial tab data
-      const deterministic = getDeterministicResponse(searchInput);
+      let deterministic: string | null = null;
+      try {
+        deterministic = getDeterministicResponse(searchInput);
+        setError(null);
+      } catch (err) {
+        console.error("getDeterministicResponse failed", err);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        deterministic = null; // safe fallback ensures UI remains stable
+      }
 
       const newTab: ChatTab = {
         id: newChatId,

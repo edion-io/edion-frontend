@@ -106,13 +106,10 @@ export const useChat = (userSettings: UserSettings) => {
     }
     
     // If navigation requested opening editor with LaTeX, honor it
-    if (initialState.openEditorWithLatex && typeof initialState.openEditorWithLatex === 'string') {
+    const latexToOpen = initialState.openEditorWithLatex || initialState.latexContent;
+    if (latexToOpen && typeof latexToOpen === 'string') {
       setShowEditorSplit(true);
-      setEditorLatex(initialState.openEditorWithLatex);
-    }
-    if (initialState.latexContent && typeof initialState.latexContent === 'string') {
-      setShowEditorSplit(true);
-      setEditorLatex(initialState.latexContent);
+      setEditorLatex(latexToOpen);
     }
 
     setIsLoading(false);
