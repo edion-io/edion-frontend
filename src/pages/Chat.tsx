@@ -290,7 +290,7 @@ const Chat = () => {
                   <>
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full min-h-0 border-r border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
+                        className={`h-full min-h-0 p-3 flex flex-col transition-all duration-200 ${dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
                         onDragOver={(e) => { e.preventDefault(); setDragOverEditor(true); }}
                         onDragEnter={() => setDragOverEditor(true)}
                         onDragLeave={() => setDragOverEditor(false)}
@@ -299,7 +299,7 @@ const Chat = () => {
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Editor</div>
                           <button
-                            className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            className="group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm"
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/pane', 'editor');
@@ -316,7 +316,8 @@ const Chat = () => {
                             title="Drag to swap panes"
                             aria-label="Drag editor pane"
                           >
-                            <span className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${isDraggingPane ? 'animate-pulse' : ''}`} />
+                            <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.22),transparent_60%)]" />
+                            <span className={`relative inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 transition-transform transition-colors duration-200 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-300 group-hover:scale-110 ${isDraggingPane ? 'animate-pulse' : ''}`} />
                           </button>
                         </div>
                         <div className="mb-2">
@@ -365,7 +366,7 @@ const Chat = () => {
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
                           <button
-                            className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            className="group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm"
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/pane', 'chat');
@@ -382,7 +383,8 @@ const Chat = () => {
                             title="Drag to swap panes"
                             aria-label="Drag chat pane"
                           >
-                            <span className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${isDraggingPane ? 'animate-pulse' : ''}`} />
+                            <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.22),transparent_60%)]" />
+                            <span className={`relative inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 transition-transform transition-colors duration-200 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-300 group-hover:scale-110 ${isDraggingPane ? 'animate-pulse' : ''}`} />
                           </button>
                         </div>
                         <ChatMessages
@@ -417,7 +419,7 @@ const Chat = () => {
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
                           <button
-                            className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            className="group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm"
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/pane', 'chat');
@@ -434,7 +436,8 @@ const Chat = () => {
                             title="Drag to swap panes"
                             aria-label="Drag chat pane"
                           >
-                            <span className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${isDraggingPane ? 'animate-pulse' : ''}`} />
+                            <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.22),transparent_60%)]" />
+                            <span className={`relative inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 transition-transform transition-colors duration-200 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-300 group-hover:scale-110 ${isDraggingPane ? 'animate-pulse' : ''}`} />
                           </button>
                         </div>
                         <ChatMessages
@@ -458,7 +461,7 @@ const Chat = () => {
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full min-h-0 border-l border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${
+                        className={`h-full min-h-0 p-3 flex flex-col transition-all duration-200 ${
                           dragOverEditor
                             ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]'
                             : ''
@@ -483,7 +486,7 @@ const Chat = () => {
                             Editor
                           </div>
                           <button
-                            className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            className="group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm"
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/pane', 'editor');
@@ -505,8 +508,9 @@ const Chat = () => {
                             title="Drag to swap panes"
                             aria-label="Drag editor pane"
                           >
+                            <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.22),transparent_60%)]" />
                             <span
-                              className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${
+                              className={`relative inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 transition-transform transition-colors duration-200 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-300 group-hover:scale-110 ${
                                 isDraggingPane ? 'animate-pulse' : ''
                               }`}
                             />
