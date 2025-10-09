@@ -43,6 +43,57 @@ npm run preview
 - `npm run preview`: Preview built app
 - `npm run lint`: Run ESLint
 
+## Demo: Split Editor Side View
+- Trigger the split view (editor on the left, chat on the right) by sending this exact instruction in chat or from the landing page:
+
+```
+Give me a combination of a context exercise and a writing exercise for a 6th grade student learning history. It should be an exercise on London's history.
+```
+
+- Behavior:
+  - The assistant returns a LaTeX exercise (deterministic mapping).
+  - The chat view splits: the left pane shows a WYSIWYG editor with the formatted exercise; the right pane keeps the conversation.
+  - Use the toolbar’s “Raw” toggle to switch the left pane between WYSIWYG and raw LaTeX.
+  - Edits in WYSIWYG are converted back to LaTeX automatically.
+
+- Implementation notes:
+  - Deterministic mapping: `src/lib/intentMappings.ts`.
+  - Split-view state and sync: `src/pages/Chat.tsx` (wires `RichTextArea`, `LatexView`, `EditorToolbar`, and LaTeX/HTML conversion).
+  - LaTeX parsing/building: `src/lib/parseLatex.ts` and `src/lib/buildLatex.ts`.
+
+## Other Hardcoded Chats and Behaviors
+- Keyword prompt flow (simulated):
+  - If a user input contains the word “exercise”, the assistant asks: “What grade are the students?”
+  - If the user replies with a message starting with `grade <number>` (e.g., `grade 6`), the assistant returns a canned LaTeX exercise about water usage:
+
+```
+Use the Internet, or contact environment agencies and water companies, to help you with the exercises below.
+
+\begin{enumerate}
+\item Name three places in your home where water is made dirty.
+\item Where does the dirty water go when it leaves your home?
+\end{enumerate}
+```
+
+- New chat from landing search (`components/Search.tsx`):
+  - Creates a new tab and seeds two messages: the user prompt and a greeting (or the “What grade…” question if prompt includes “exercise”).
+
+- File upload path (`components/FileUploadMenu.tsx` and `components/Search.tsx`):
+  - Selecting a file creates a new chat tab with a user message like “I’ve uploaded <file> …” and an assistant message prompting for next steps. Toasts confirm selection.
+
+## Using the Editor in Chat
+- WYSIWYG editor: `components/Editor/RichTextArea.tsx` with MathLive for inline math.
+- Toolbar: `components/Editor/EditorToolbar.tsx` provides formatting, list controls, alignment, color/highlight, math insertion, and table insertion.
+- Raw LaTeX view: `components/Editor/LatexView.tsx` (copy-friendly textarea). Toggle from the toolbar.
+- Conversion:
+  - LaTeX → HTML (for WYSIWYG): `parseLatexToHtml`.
+  - HTML → LaTeX (on edit): `buildLatexDocument`.
+
+## Notes
+- The split editor demo currently triggers only on the exact instruction above.
+- Chat/tabs/history and user settings persist in `localStorage`.
+- Dev server default is port 8080 (see `vite.config.ts`).
+
 ## App Structure
 - `src/main.tsx`: App bootstrap and immediate theme initialization from `localStorage` or system preference.
 - `src/App.tsx`: Providers (TanStack Query, Tooltip, Sonner) and routing.
