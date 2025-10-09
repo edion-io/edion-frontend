@@ -14,6 +14,7 @@ import useInlineMath from '../hooks/useInlineMath';
 import LatexView from '../components/Editor/LatexView';
 import { buildLatexDocument } from '../lib/buildLatex';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const Chat = () => {
   const [userSettings, setUserSettings] = useState<UserSettingsType>(getUserSettingsFromStorage());
@@ -283,8 +284,16 @@ const Chat = () => {
           goToSettings={goToSettings}
         />
 
-          <div className={`flex-1 flex w-full min-h-0`}>
+          <AnimatePresence mode="wait" initial={false}>
             {showEditorSplit ? (
+              <motion.div
+                key="split"
+                className="flex-1 flex w-full min-h-0"
+                initial={{ opacity: 0, x: 16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -16 }}
+                transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+              >
               <ResizablePanelGroup direction="horizontal" className="w-full min-h-0">
                 {editorOnLeft ? (
                   <>
@@ -394,7 +403,7 @@ const Chat = () => {
                           onEditMessage={handleEditMessage}
                           reserveForFixedComposer={false}
                         />
-                        <div className="relative">
+                        <div className="relative px-3 pb-3">
                           <ChatInput
                             key={`input-${forceUpdate}`}
                             inputValue={inputValue}
@@ -447,7 +456,7 @@ const Chat = () => {
                           onEditMessage={handleEditMessage}
                           reserveForFixedComposer={false}
                         />
-                        <div className="relative">
+                        <div className="relative px-3 pb-3">
                           <ChatInput
                             key={`input-${forceUpdate}`}
                             inputValue={inputValue}
@@ -551,7 +560,16 @@ const Chat = () => {
                   </>
                 )}
               </ResizablePanelGroup>
+              </motion.div>
             ) : (
+              <motion.div
+                key="single"
+                className="flex-1 flex w-full min-h-0"
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 16 }}
+                transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+              >
               <div className="w-full flex flex-col">
             <ChatMessages
               key={`messages-${forceUpdate}`}
@@ -569,8 +587,9 @@ const Chat = () => {
               />
             </div>
               </div>
+              </motion.div>
             )}
-          </div>
+          </AnimatePresence>
         </div>
       </div>
   );
