@@ -14,6 +14,7 @@ import useInlineMath from '../hooks/useInlineMath';
 import LatexView from '../components/Editor/LatexView';
 import { buildLatexDocument } from '../lib/buildLatex';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
+import DragHandle from '../components/DragHandle';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const Chat = () => {
@@ -116,6 +117,9 @@ const Chat = () => {
   const [execFormatCommand, setExecFormatCommand] = useState<((command: string, value?: string) => void) | null>(null);
   const [showRawLatex, setShowRawLatex] = useState(false);
   const suppressLatexSyncRef = useRef(false);
+  // When true, the latest editorLatex update came from the WYSIWYG editor.
+  // In that case we must not re-parse LaTeX back to HTML or we'll reset the caret.
+  const skipPopulateFromEditorRef = useRef(false);
   const [editorOnLeft, setEditorOnLeft] = useState(true);
   const [isDraggingPane, setIsDraggingPane] = useState(false);
   const [dragOverEditor, setDragOverEditor] = useState(false);
@@ -146,6 +150,12 @@ const Chat = () => {
   // Populate WYSIWYG when deterministic LaTeX is set
   useEffect(() => {
     if (showEditorSplit && editorLatex) {
+      // If LaTeX was produced by the editor itself, skip re-populating HTML
+      // to avoid resetting the user's caret/selection.
+      if (skipPopulateFromEditorRef.current) {
+        skipPopulateFromEditorRef.current = false;
+        return;
+      }
       try {
         const html = parseLatexToHtml(editorLatex);
         // Prevent immediate LaTeX rebuild caused by this programmatic HTML set
@@ -172,6 +182,9 @@ const Chat = () => {
     }
     try {
       const doc = buildLatexDocument(editorContent);
+      // Mark that this LaTeX originated from the editor so populate step won't
+      // re-parse it back into HTML and clobber the caret position.
+      skipPopulateFromEditorRef.current = true;
       setEditorLatex(doc);
     } catch (_e) {
       // ignore conversion failures during typing
@@ -307,27 +320,20 @@ const Chat = () => {
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Editor</div>
-                          <button
-                            className="group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm"
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('text/pane', 'editor');
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {
-                                /* Intentionally ignore for cross-browser compatibility: some browsers throw
-                                   on setDragImage or when using data URL images */
-                              }
+                          <DragHandle
+                            paneType="editor"
+                            isDragging={isDraggingPane}
+                            onDragStart={() => {
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
-                            onDragEnd={() => { setIsDraggingPane(false); setDragOverEditor(false); setDragOverChat(false); document.body.classList.remove('dragging-pane'); }}
-                            title="Drag to swap panes"
-                            aria-label="Drag editor pane"
-                          >
-                            <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.22),transparent_60%)]" />
-                            <span className={`relative inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 transition-transform transition-colors duration-200 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-300 group-hover:scale-110 ${isDraggingPane ? 'animate-pulse' : ''}`} />
-                          </button>
+                            onDragEnd={() => {
+                              setIsDraggingPane(false);
+                              setDragOverEditor(false);
+                              setDragOverChat(false);
+                              document.body.classList.remove('dragging-pane');
+                            }}
+                          />
                         </div>
                         <div className="mb-2">
                           <EditorToolbar 
@@ -374,27 +380,20 @@ const Chat = () => {
                       >
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
-                          <button
-                            className="group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm"
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('text/pane', 'chat');
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {
-                                /* Intentionally ignore for cross-browser compatibility: some browsers throw
-                                   on setDragImage or when using data URL images */
-                              }
+                          <DragHandle
+                            paneType="chat"
+                            isDragging={isDraggingPane}
+                            onDragStart={() => {
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
-                            onDragEnd={() => { setIsDraggingPane(false); setDragOverEditor(false); setDragOverChat(false); document.body.classList.remove('dragging-pane'); }}
-                            title="Drag to swap panes"
-                            aria-label="Drag chat pane"
-                          >
-                            <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.22),transparent_60%)]" />
-                            <span className={`relative inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 transition-transform transition-colors duration-200 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-300 group-hover:scale-110 ${isDraggingPane ? 'animate-pulse' : ''}`} />
-                          </button>
+                            onDragEnd={() => {
+                              setIsDraggingPane(false);
+                              setDragOverEditor(false);
+                              setDragOverChat(false);
+                              document.body.classList.remove('dragging-pane');
+                            }}
+                          />
                         </div>
                         <ChatMessages
                           key={`messages-${forceUpdate}`}
@@ -427,27 +426,20 @@ const Chat = () => {
                       >
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
-                          <button
-                            className="group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm"
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('text/pane', 'chat');
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {
-                                /* Intentionally ignore for cross-browser compatibility: some browsers throw
-                                   on setDragImage or when using data URL images */
-                              }
+                          <DragHandle
+                            paneType="chat"
+                            isDragging={isDraggingPane}
+                            onDragStart={() => {
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
-                            onDragEnd={() => { setIsDraggingPane(false); setDragOverEditor(false); setDragOverChat(false); document.body.classList.remove('dragging-pane'); }}
-                            title="Drag to swap panes"
-                            aria-label="Drag chat pane"
-                          >
-                            <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.22),transparent_60%)]" />
-                            <span className={`relative inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 transition-transform transition-colors duration-200 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-300 group-hover:scale-110 ${isDraggingPane ? 'animate-pulse' : ''}`} />
-                          </button>
+                            onDragEnd={() => {
+                              setIsDraggingPane(false);
+                              setDragOverEditor(false);
+                              setDragOverChat(false);
+                              document.body.classList.remove('dragging-pane');
+                            }}
+                          />
                         </div>
                         <ChatMessages
                           key={`messages-${forceUpdate}`}
@@ -494,17 +486,10 @@ const Chat = () => {
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             Editor
                           </div>
-                          <button
-                            className="group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm"
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('text/pane', 'editor');
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {
-                                /* Intentionally ignore for cross-browser compatibility: some browsers throw
-                                   on setDragImage or when using data URL images */
-                              }
+                          <DragHandle
+                            paneType="editor"
+                            isDragging={isDraggingPane}
+                            onDragStart={() => {
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
@@ -514,16 +499,7 @@ const Chat = () => {
                               setDragOverChat(false);
                               document.body.classList.remove('dragging-pane');
                             }}
-                            title="Drag to swap panes"
-                            aria-label="Drag editor pane"
-                          >
-                            <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.22),transparent_60%)]" />
-                            <span
-                              className={`relative inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 transition-transform transition-colors duration-200 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-300 group-hover:scale-110 ${
-                                isDraggingPane ? 'animate-pulse' : ''
-                              }`}
-                            />
-                          </button>
+                          />
                         </div>
                         <div className="mb-2">
                           <EditorToolbar
