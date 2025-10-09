@@ -444,21 +444,59 @@ const Chat = () => {
                     </ResizablePanel>
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={50} minSize={20}>
-                      <div className="h-full border-l border-gray-200 dark:border-gray-800 p-3 flex flex-col" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { const src = e.dataTransfer.getData('text/pane'); if (src === 'chat') setEditorOnLeft(true); }}>
+                      <div
+                        className={`h-full border-l border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${
+                          dragOverEditor
+                            ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]'
+                            : ''
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverEditor(true);
+                        }}
+                        onDragEnter={() => setDragOverEditor(true)}
+                        onDragLeave={() => setDragOverEditor(false)}
+                        onDrop={(e) => {
+                          const src = e.dataTransfer.getData('text/pane');
+                          if (src === 'chat') setEditorOnLeft(true);
+                          setDragOverEditor(false);
+                          setIsDraggingPane(false);
+                          document.body.classList.remove('dragging-pane');
+                        }}
+                      >
                         <div className="flex items-center justify-between mb-2">
-                          <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Editor</div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Editor
+                          </div>
                           <button
                             className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                             draggable
-                            onDragStart={(e) => { e.dataTransfer.setData('text/pane', 'editor'); }}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/pane', 'editor');
+                              const img = new Image();
+                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                              setIsDraggingPane(true);
+                              document.body.classList.add('dragging-pane');
+                            }}
+                            onDragEnd={() => {
+                              setIsDraggingPane(false);
+                              setDragOverEditor(false);
+                              setDragOverChat(false);
+                              document.body.classList.remove('dragging-pane');
+                            }}
                             title="Drag to swap panes"
                             aria-label="Drag editor pane"
                           >
-                            <span className="inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600" />
+                            <span
+                              className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${
+                                isDraggingPane ? 'animate-pulse' : ''
+                              }`}
+                            />
                           </button>
                         </div>
                         <div className="mb-2">
-                          <EditorToolbar 
+                          <EditorToolbar
                             showRawLatex={showRawLatex}
                             toggleRawLatex={() => setShowRawLatex(v => !v)}
                             onInsertMath={insertMathDelimiters}
@@ -467,28 +505,26 @@ const Chat = () => {
                             onOutdent={handleOutdent}
                             editorRef={editorRef}
                             onNewListCreated={() => {}}
-                            onFormatCommandReady={(fn) => setExecFormatCommand(() => fn)}
+                            onFormatCommandReady={fn => setExecFormatCommand(() => fn)}
                           />
                         </div>
-                        {
-                          !showRawLatex ? (
-                            <div className="flex-1 bg-white dark:bg-zinc-800 rounded-md border shadow-sm">
-                              <RichTextArea
-                                content={editorContent}
-                                onChange={setEditorContent}
-                                editorRef={editorRef}
-                                onFormatCommand={execFormatCommand || undefined}
-                              />
-                            </div>
-                          ) : (
-                            <div className="flex-1 bg-white dark:bg-zinc-800 rounded-md border shadow-sm p-3">
-                              <LatexView 
-                                latexDocument={editorLatex || ''}
-                                onChange={(next) => setEditorLatex(next)}
-                              />
-                            </div>
-                          )
-                        }
+                        {!showRawLatex ? (
+                          <div className="flex-1 bg-white dark:bg-zinc-800 rounded-md border shadow-sm">
+                            <RichTextArea
+                              content={editorContent}
+                              onChange={setEditorContent}
+                              editorRef={editorRef}
+                              onFormatCommand={execFormatCommand || undefined}
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex-1 bg-white dark:bg-zinc-800 rounded-md border shadow-sm p-3">
+                            <LatexView
+                              latexDocument={editorLatex || ''}
+                              onChange={next => setEditorLatex(next)}
+                            />
+                          </div>
+                        )}
                       </div>
                     </ResizablePanel>
                   </>
