@@ -283,14 +283,14 @@ const Chat = () => {
           goToSettings={goToSettings}
         />
 
-          <div className={`flex-1 flex w-full`}>
+          <div className={`flex-1 flex w-full min-h-0`}>
             {showEditorSplit ? (
-              <ResizablePanelGroup direction="horizontal" className="w-full">
+              <ResizablePanelGroup direction="horizontal" className="w-full min-h-0">
                 {editorOnLeft ? (
                   <>
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full border-r border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
+                        className={`h-full min-h-0 border-r border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
                         onDragOver={(e) => { e.preventDefault(); setDragOverEditor(true); }}
                         onDragEnter={() => setDragOverEditor(true)}
                         onDragLeave={() => setDragOverEditor(false)}
@@ -305,7 +305,10 @@ const Chat = () => {
                               e.dataTransfer.setData('text/pane', 'editor');
                               const img = new Image();
                               img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {
+                                /* Intentionally ignore for cross-browser compatibility: some browsers throw
+                                   on setDragImage or when using data URL images */
+                              }
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
@@ -326,7 +329,7 @@ const Chat = () => {
                             onOutdent={handleOutdent}
                             editorRef={editorRef}
                             onNewListCreated={() => {}}
-                            onFormatCommandReady={(fn) => setExecFormatCommand(() => fn)}
+                            onFormatCommandReady={fn => setExecFormatCommand(() => fn)}
                           />
                         </div>
                         {
@@ -353,7 +356,7 @@ const Chat = () => {
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
+                        className={`h-full min-h-0 flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
                         onDragOver={(e) => { e.preventDefault(); setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
@@ -368,7 +371,10 @@ const Chat = () => {
                               e.dataTransfer.setData('text/pane', 'chat');
                               const img = new Image();
                               img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {
+                                /* Intentionally ignore for cross-browser compatibility: some browsers throw
+                                   on setDragImage or when using data URL images */
+                              }
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
@@ -384,6 +390,7 @@ const Chat = () => {
                           activeTab={activeTab}
                           darkMode={userSettings.darkMode}
                           onEditMessage={handleEditMessage}
+                          reserveForFixedComposer={false}
                         />
                         <div className="relative">
                           <ChatInput
@@ -391,6 +398,7 @@ const Chat = () => {
                             inputValue={inputValue}
                             setInputValue={setInputValue}
                             onSubmit={handleSubmit}
+                            withinPane
                           />
                         </div>
                       </div>
@@ -400,7 +408,7 @@ const Chat = () => {
                   <>
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
+                        className={`h-full min-h-0 flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
                         onDragOver={(e) => { e.preventDefault(); setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
@@ -415,7 +423,10 @@ const Chat = () => {
                               e.dataTransfer.setData('text/pane', 'chat');
                               const img = new Image();
                               img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {
+                                /* Intentionally ignore for cross-browser compatibility: some browsers throw
+                                   on setDragImage or when using data URL images */
+                              }
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
@@ -431,6 +442,7 @@ const Chat = () => {
                           activeTab={activeTab}
                           darkMode={userSettings.darkMode}
                           onEditMessage={handleEditMessage}
+                          reserveForFixedComposer={false}
                         />
                         <div className="relative">
                           <ChatInput
@@ -438,6 +450,7 @@ const Chat = () => {
                             inputValue={inputValue}
                             setInputValue={setInputValue}
                             onSubmit={handleSubmit}
+                            withinPane
                           />
                         </div>
                       </div>
@@ -445,7 +458,7 @@ const Chat = () => {
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full border-l border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${
+                        className={`h-full min-h-0 border-l border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${
                           dragOverEditor
                             ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]'
                             : ''
@@ -475,7 +488,10 @@ const Chat = () => {
                               e.dataTransfer.setData('text/pane', 'editor');
                               const img = new Image();
                               img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {
+                                /* Intentionally ignore for cross-browser compatibility: some browsers throw
+                                   on setDragImage or when using data URL images */
+                              }
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
@@ -537,6 +553,7 @@ const Chat = () => {
               activeTab={activeTab}
               darkMode={userSettings.darkMode}
               onEditMessage={handleEditMessage}
+              reserveForFixedComposer
             />
             <div className="relative">
               <ChatInput

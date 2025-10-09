@@ -99,12 +99,14 @@ interface ChatMessagesProps {
   darkMode: boolean;
   onEditMessage?: (messageId: number, newText: string) => void;
   onEditPDF?: () => void;
+  reserveForFixedComposer?: boolean; // when true, add bottom padding based on fixed composer height
 }
 
-const ChatMessages: React.FC<ChatMessagesProps> = memo(({ activeTab, darkMode, onEditMessage, onEditPDF }) => {
+const ChatMessages: React.FC<ChatMessagesProps> = memo(({ activeTab, darkMode, onEditMessage, onEditPDF, reserveForFixedComposer = true }) => {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -119,22 +121,37 @@ const ChatMessages: React.FC<ChatMessagesProps> = memo(({ activeTab, darkMode, o
   useEffect(() => {
     const el = chatContainerRef.current;
     if (!el) return;
-    const handleScroll = () => {
+
+    const updateNearBottom = () => {
       const threshold = 120; // px
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       setIsNearBottom(distanceFromBottom <= threshold);
     };
+
+    const handleScroll = () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      scrollTimeoutRef.current = setTimeout(updateNearBottom, 50);
+    };
+
     // Initialize near-bottom state on mount
-    handleScroll();
+    updateNearBottom();
     el.addEventListener('scroll', handleScroll);
-    return () => el.removeEventListener('scroll', handleScroll);
+    return () => {
+      el.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   return (
     <div 
       ref={chatContainerRef}
       className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 bg-gray-100 dark:bg-zinc-950"
-      style={{ paddingBottom: 'var(--composer-height, 160px)' }}
+      style={reserveForFixedComposer ? { paddingBottom: 'var(--composer-height, 160px)' } : undefined}
     >
       <div className="w-full mx-auto" style={{ maxWidth: 'min(100%, 800px)', width: '100%', padding: '0 4px', boxSizing: 'border-box' }}>
         {activeTab.messages.length === 0 ? (
