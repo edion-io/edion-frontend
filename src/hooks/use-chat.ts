@@ -105,60 +105,64 @@ export const useChat = (userSettings: UserSettings) => {
     setIsLoading(false);
   }, [initialState.selectedChatId, initialState.initialQuery]);
 
-  // Handle form submission
-  const handleSubmit = useCallback((e: React.FormEvent) => {
+  // Handle form submission (calls backend)
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || !activeTabId) return;
 
-    // Capture the current user input before we clear it for async handling
     const userText = inputValue;
 
+    // Append user message locally
     const updatedTabs = tabs.map(tab => {
       if (tab.id === activeTabId) {
-        const updatedMessages = [
-          ...tab.messages,
-          {
-            id: tab.messages.length + 1,
-            text: userText,
-            isUser: true,
-          }
-        ];
-        
         return {
           ...tab,
-          messages: updatedMessages,
+          messages: [
+            ...tab.messages,
+            {
+              id: tab.messages.length + 1,
+              text: userText,
+              isUser: true,
+            }
+          ],
         };
       }
       return tab;
     });
-    
     setTabs(updatedTabs);
     setInputValue('');
 
-    // Simulate AI response
-    setTimeout(() => {
+    // Ensure sessionId per tab
+    let sessionId = updatedTabs.find(t => t.id === activeTabId)?.sessionId;
+    try {
+      if (!sessionId) {
+        const r = await fetch('http://127.0.0.1:5057/add_session');
+        const j = await r.json();
+        sessionId = j.session_id;
+        const tabsWithSession = updatedTabs.map(tab => tab.id === activeTabId ? { ...tab, sessionId } : tab);
+        setTabs(tabsWithSession);
+        localStorage.setItem('chatTabs', JSON.stringify(tabsWithSession));
+      }
+
+      // Send chat to backend
+      const resp = await fetch('http://127.0.0.1:5057/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, user_input: userText })
+      });
+      const data = await resp.json();
+      const assistantText = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
+
+      // Append assistant message
       setTabs(prevTabs => prevTabs.map(tab => {
         if (tab.id === activeTabId) {
-          // Determine assistant response based on the user's latest message
-          const normalized = userText.trim().toLowerCase();
-          const isExercisePrompt = normalized.includes('exercise');
-          const isGradeResponse = /^grade\s*\d+/i.test(userText.trim());
-
-          const exerciseText = "Use the Internet, or contact environment agencies and water companies, to help you with the exercises below.\n\n\\begin{enumerate}\n\\item Name three places in your home where water is made dirty.\n\\item Where does the dirty water go when it leaves your home?\n\\end{enumerate}";
-
-          const responseText = isGradeResponse
-            ? exerciseText
-            : isExercisePrompt
-              ? "What grade are the students?"
-              : "I'm processing your request. How else can I assist you?";
-
           return {
             ...tab,
             messages: [
               ...tab.messages,
               {
                 id: tab.messages.length + 1,
-                text: responseText,
+                text: assistantText,
                 isUser: false,
               }
             ],
@@ -166,21 +170,31 @@ export const useChat = (userSettings: UserSettings) => {
         }
         return tab;
       }));
-    }, 1000);
 
-    // Update chat history
-    const updatedHistory = chatHistory.map(chat => {
-      if (chat.id === activeTabId) {
-        return {
-          ...chat,
-          lastMessage: userText,
-        };
-      }
-      return chat;
-    });
-    
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+      // Update chat history (last message)
+      const updatedHistory = chatHistory.map(chat => chat.id === activeTabId ? { ...chat, lastMessage: userText } : chat);
+      setChatHistory(updatedHistory);
+      localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+    } catch (err) {
+      console.error('Chat error:', err);
+      // Append error message
+      setTabs(prevTabs => prevTabs.map(tab => {
+        if (tab.id === activeTabId) {
+          return {
+            ...tab,
+            messages: [
+              ...tab.messages,
+              {
+                id: tab.messages.length + 1,
+                text: 'Error contacting the assistant. Please try again.',
+                isUser: false,
+              }
+            ],
+          };
+        }
+        return tab;
+      }));
+    }
   }, [inputValue, activeTabId, tabs, chatHistory]);
 
   // Create a new tab

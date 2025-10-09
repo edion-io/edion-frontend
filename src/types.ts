@@ -54,6 +54,7 @@ export interface ChatTab {
   date: string;
   messages: ChatMessage[];
   activePDF: string | null;
+  sessionId?: string;
 }
 
 // TypeScript alias to enable backwards compatibility with existing code
