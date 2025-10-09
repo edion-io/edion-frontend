@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChatHistoryItem, ChatTab } from '../types';
 import { cn } from '@/lib/utils';
 import FileUploadMenu from './FileUploadMenu';
+import { getDeterministicResponse } from '@/lib/intentMappings';
 
 const Search = () => {
   const [searchInput, setSearchInput] = useState("");
@@ -37,6 +38,8 @@ const Search = () => {
       localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
       
       // Create initial tab data
+      const deterministic = getDeterministicResponse(searchInput);
+
       const newTab: ChatTab = {
         id: newChatId,
         title: searchInput,
@@ -49,9 +52,9 @@ const Search = () => {
           },
           {
             id: 2,
-            text: (searchInput.trim().toLowerCase().includes('exercise')
+            text: (deterministic ?? (searchInput.trim().toLowerCase().includes('exercise')
               ? "What grade are the students?"
-              : "Hello! I'm here to help. What can I assist you with today?"),
+              : "Hello! I'm here to help. What can I assist you with today?")),
             isUser: false,
           }
         ],
