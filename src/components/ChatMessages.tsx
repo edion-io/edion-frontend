@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, memo } from 'react';
+import React, { useEffect, useRef, useState, memo } from 'react';
 import { Download, Pencil, RefreshCw, FileText, BookOpen, ClipboardList, CheckSquare } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ChatTab } from '../types';
@@ -104,19 +104,37 @@ interface ChatMessagesProps {
 const ChatMessages: React.FC<ChatMessagesProps> = memo(({ activeTab, darkMode, onEditMessage, onEditPDF }) => {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [activeTab.messages]);
+    if (isNearBottom) {
+      scrollToBottom();
+    }
+  }, [activeTab.messages, isNearBottom]);
+
+  useEffect(() => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const threshold = 120; // px
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setIsNearBottom(distanceFromBottom <= threshold);
+    };
+    // Initialize near-bottom state on mount
+    handleScroll();
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
     <div 
       ref={chatContainerRef}
-      className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-28"
+      className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 bg-gray-100 dark:bg-zinc-950"
+      style={{ paddingBottom: 'var(--composer-height, 160px)' }}
     >
       <div className="w-full mx-auto" style={{ maxWidth: 'min(100%, 800px)', width: '100%', padding: '0 4px', boxSizing: 'border-box' }}>
         {activeTab.messages.length === 0 ? (
