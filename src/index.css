@@ -1,0 +1,329 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Specific background colors for dark mode */
+.dark body,
+.dark .bg-gray-950,
+.dark .bg-gray-900 {
+  background-color: rgb(9, 9, 11) !important; /* zinc-950 */
+}
+
+.dark .bg-gray-800 {
+  background-color: rgb(24, 24, 27) !important; /* zinc-900 */
+}
+
+/* Override any remaining gray colors in dark mode */
+.dark [class*="dark:bg-gray-"] {
+  background-color: rgb(9, 9, 11) !important; /* zinc-950 */
+}
+
+.dark [class*="dark:text-gray-"] {
+  color: rgb(244, 244, 245) !important; /* zinc-100 */
+}
+
+/* Make sure zinc backgrounds are consistent too */
+.dark .dark\:bg-zinc-950 {
+  background-color: rgb(9, 9, 11) !important; /* zinc-950 */
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 10%;
+
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+
+    --primary: 0 0% 10%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 10%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 89%;
+    --input: 0 0% 89%;
+    --ring: 0 0% 80%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0 0% 5%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 10%;
+
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
+
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 0 0% 28%;
+  }
+}
+
+/* Reset all scrollbar styles first to avoid inheritance issues */
+* {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(0, 0, 0, 0.5) transparent !important;
+}
+
+/* WebKit (Chrome, Safari, newer Edge) scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+  background-color: transparent !important;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent !important;
+  border-radius: 10px !important;
+  margin: 2px !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border-radius: 10px !important;
+  border: none !important;
+  background-clip: content-box !important;
+  min-height: 40px !important;
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active,
+::-webkit-scrollbar-thumb:window-inactive {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+  width: 6px !important;
+}
+
+/* Dark mode scrollbar adjustments */
+.dark * {
+  scrollbar-color: rgba(0, 0, 0, 0.7) transparent !important;
+}
+
+.dark ::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb:hover,
+.dark ::-webkit-scrollbar-thumb:active,
+.dark ::-webkit-scrollbar-thumb:window-inactive {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Ensure these styles are applied to the ChatHistory component specifically */
+.overflow-y-auto {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(0, 0, 0, 0.5) transparent !important;
+}
+
+.dark .overflow-y-auto {
+  scrollbar-color: rgba(0, 0, 0, 0.7) transparent !important;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+  background-color: transparent !important;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background-color: transparent !important;
+  border-radius: 10px !important;
+  margin: 2px !important;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border-radius: 10px !important;
+  border: none !important;
+  background-clip: content-box !important;
+  min-height: 40px !important;
+}
+
+.dark .overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html, body {
+    @apply overflow-x-hidden max-w-[100vw];
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+  
+  .search-input {
+    @apply bg-secondary py-3 px-6 rounded-lg w-full transition-all duration-300 focus-within:ring-1 focus-within:ring-black/20;
+  }
+  
+  .search-input input {
+    @apply bg-transparent border-none outline-none w-full text-base placeholder:text-muted-foreground;
+  }
+  
+  .theme-change-immediate {
+    transition: none !important;
+  }
+  
+  .theme-change-immediate svg,
+  .theme-change-immediate path,
+  .theme-change-immediate * {
+    transition: none !important;
+  }
+  
+  .logo-container {
+    @apply relative overflow-hidden;
+  }
+  
+  .logo {
+    @apply transition-transform duration-500;
+  }
+  
+  .logo-container:hover .logo {
+    @apply transform scale-105;
+  }
+  
+  /* Word wrapping utilities */
+  .break-words {
+    word-break: break-word;
+  }
+  
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+  }
+  
+  .hyphens-auto {
+    hyphens: auto;
+  }
+}
+
+/* Add this to your index.css file */
+.dark .dark\:fill-gray-800 {
+  fill: rgb(24, 24, 27) !important; /* zinc-900 */
+}
+
+@keyframes tabGlow {
+  0% { box-shadow: 0 0 12px rgba(59, 130, 246, 0.15); }
+  50% { box-shadow: 0 0 18px rgba(59, 130, 246, 0.3); }
+  100% { box-shadow: 0 0 12px rgba(59, 130, 246, 0.15); }
+}
+
+.dark .active-tab {
+  animation: tabGlow 3s ease-in-out infinite;
+}
+
+/* Force toast positioning to stay on the right side on all screen sizes */
+[data-sonner-toaster] {
+  right: 8px !important;
+  left: auto !important;
+  transform: none !important;
+}
+
+/* Ensure individual toasts are right-aligned within the container */
+[data-sonner-toast] {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  color: inherit !important;
+}
+
+/* Target all possible text containers in Sonner toasts */
+[data-sonner-toast] > div,
+[data-sonner-toast] [data-title],
+[data-sonner-toast] [data-description],
+[data-sonner-toast] [data-content],
+[data-sonner-toast] .sonner-toast-title,
+[data-sonner-toast] .sonner-toast-description {
+  opacity: 1 !important;
+  color: inherit !important;
+}
+
+/* More aggressive targeting for all text elements */
+[data-sonner-toast] * {
+  opacity: 1 !important;
+}
+
+/* Ensure the top/first toast is always fully visible */
+[data-sonner-toast]:first-child {
+  opacity: 1 !important;
+}
+
+/* Ensure text remains visible even when stacked */
+[data-sonner-toaster] [data-sonner-toast] {
+  opacity: 1 !important;
+}
+
+[data-sonner-toaster] [data-sonner-toast] * {
+  opacity: 1 !important;
+}
+
+/* Mobile responsive adjustments for toasts */
+@media (max-width: 640px) {
+  [data-sonner-toaster] {
+    right: 8px !important;
+    left: auto !important;
+    width: calc(100vw - 16px) !important;
+    max-width: 320px !important;
+  }
+  
+  [data-sonner-toast] {
+    width: 100% !important;
+    max-width: 320px !important;
+  }
+}
+
+/* Math field styling - truly responsive to content */
+.rich-text-editor math-field {
+  font-size: 0.8125rem; /* 13px at 16px base */
+  line-height: 1.1;
+  min-height: 1.125rem; /* 18px at 16px base */
+  height: auto !important;
+  max-height: none !important;
+  padding: 2px 4px !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 3px !important;
+  background-color: #f9fafb !important;
+  margin: 0 1px !important;
+  overflow: visible !important;
+  width: auto !important;
+  min-width: 20px !important;
+}
