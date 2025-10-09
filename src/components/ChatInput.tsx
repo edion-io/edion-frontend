@@ -82,8 +82,28 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
     return () => window.removeEventListener('resize', checkOverflow);
   }, [inputValue, isExpanded]);
 
+  // Track and publish the composer height as a CSS variable for layout spacing
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const setVar = () => {
+      const h = el.offsetHeight || 0;
+      document.documentElement.style.setProperty('--composer-height', `${h + 12}px`);
+    };
+    setVar();
+    const ro = new ResizeObserver(() => setVar());
+    ro.observe(el);
+    const onResize = () => setVar();
+    window.addEventListener('resize', onResize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+
   return (
-    <div className="absolute bottom-6 left-0 right-0 px-3 sm:px-6">
+    <div ref={containerRef} className="fixed bottom-0 left-0 right-0 px-3 sm:px-6 bg-gray-100 dark:bg-zinc-950 z-50">
       {showExpandButton && (
         <button
           onClick={toggleExpand}
