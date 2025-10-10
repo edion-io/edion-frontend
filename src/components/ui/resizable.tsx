@@ -16,12 +16,8 @@ interface ResizableHandleProps
   withHandle?: boolean
 }
 
-const ResizableHandle = React.forwardRef<
-  React.ElementRef<typeof PanelResizeHandlePrimitive>,
-  ResizableHandleProps
->(({ className, withHandle = false, ...props }, ref) => (
+const ResizableHandle = ({ className, withHandle = false, ...props }: ResizableHandleProps) => (
   <PanelResizeHandlePrimitive
-    ref={ref}
     className={cn(
       // Base vertical handle styles; the library adds data attributes we can key off if needed
       "relative flex w-px select-none items-center justify-center bg-border data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:py-2",
@@ -35,8 +31,7 @@ const ResizableHandle = React.forwardRef<
       </div>
     ) : null}
   </PanelResizeHandlePrimitive>
-))
-ResizableHandle.displayName = "ResizableHandle"
+)
 
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle }
 

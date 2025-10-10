@@ -163,6 +163,20 @@ export const useChat = (userSettings: UserSettings) => {
       const data = await resp.json();
       const assistantText = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
 
+      // If the assistant returns an exercise payload, open editor split with LaTeX content
+      try {
+        const trimmed = assistantText.trim();
+        const openTag = '<exercise>';
+        const closeTag = '</exercise>';
+        if (trimmed.startsWith(openTag) && trimmed.endsWith(closeTag)) {
+          const latexPayload = trimmed.slice(openTag.length, trimmed.length - closeTag.length).trim();
+          setShowEditorSplit(true);
+          setEditorLatex(latexPayload);
+        }
+      } catch (_e) {
+        // Non-fatal: if parsing fails, continue without opening the editor
+      }
+
       // Append assistant message
       setTabs(prevTabs => prevTabs.map(tab => {
         if (tab.id === activeTabId) {
