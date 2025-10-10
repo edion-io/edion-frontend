@@ -10,7 +10,20 @@ type DragHandleProps = {
   onKeySwap?: (direction: 'left' | 'right' | 'toggle') => void;
 };
 
-export const DRAG_HANDLE_BUTTON_CLASSES = "group relative rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-200 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent bg-white/30 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 backdrop-blur-sm shadow-sm";
+export const DRAG_HANDLE_BUTTON_CLASSES = [
+  // layout
+  'group relative flex items-center justify-center',
+  // sizing
+  'rounded-full w-6 h-6',
+  // color/foreground
+  'text-gray-500 dark:text-gray-400',
+  // background
+  'bg-white/30 dark:bg-white/5',
+  // hover/interaction
+  'hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-white/10 hover:scale-110 hover:ring-2 hover:ring-indigo-400/40 hover:ring-offset-2 hover:ring-offset-transparent',
+  // effects
+  'transition-all duration-200 backdrop-blur-sm shadow-sm',
+].join(' ');
 
 const DragHandle: React.FC<DragHandleProps> = ({ paneType, isDragging, onDragStart, onDragEnd, onKeySwap }) => {
   return (
@@ -19,9 +32,8 @@ const DragHandle: React.FC<DragHandleProps> = ({ paneType, isDragging, onDragSta
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData('text/pane', paneType);
-        const img = new Image();
-        img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-        img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+const img = new Image();
+img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
         try {
           e.dataTransfer.setDragImage(img, 0, 0);
         } catch (err) {
