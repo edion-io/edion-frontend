@@ -111,7 +111,6 @@ export const useChat = (userSettings: UserSettings) => {
       setShowEditorSplit(true);
       setEditorLatex(latexToOpen);
     }
-
     setIsLoading(false);
   }, [initialState.selectedChatId, initialState.initialQuery, initialState.openEditorWithLatex, initialState.latexContent]);
 
@@ -141,6 +140,34 @@ export const useChat = (userSettings: UserSettings) => {
     });
     setTabs(updatedTabs);
     setInputValue('');
+
+    // Try deterministic response first; if none, fall back to backend
+    const deterministic = getDeterministicResponse(userText);
+    if (deterministic) {
+      setShowEditorSplit(true);
+      setEditorLatex(deterministic);
+      setTabs(prevTabs => prevTabs.map(tab => {
+        if (tab.id === activeTabId) {
+          return {
+            ...tab,
+            messages: [
+              ...tab.messages,
+              {
+                id: tab.messages.length + 1,
+                text: deterministic,
+                isUser: false,
+              }
+            ],
+          };
+        }
+        return tab;
+      }));
+      // Update chat history (last message)
+      const updatedHistory = chatHistory.map(chat => chat.id === activeTabId ? { ...chat, lastMessage: userText } : chat);
+      setChatHistory(updatedHistory);
+      localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+      return;
+    }
 
     // Ensure sessionId per tab
     let sessionId = updatedTabs.find(t => t.id === activeTabId)?.sessionId;

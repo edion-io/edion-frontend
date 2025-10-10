@@ -28,15 +28,17 @@ interface ChatInputProps {
   inputValue: string;
   setInputValue: (value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
+  withinPane?: boolean; // when true, render composer within pane (not viewport-fixed)
 }
 
-const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputValue, onSubmit }) => {
+const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputValue, onSubmit, withinPane = false }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showExpandButton, setShowExpandButton] = useState(false);
 
   const INITIAL_HEIGHT = 120;
+  const COMPOSER_HEIGHT_OFFSET = 12; // Offset added when computing --composer-height (not padding on the element)
   const EXPANDED_HEIGHT = Math.round(window.innerHeight * 0.6);
 
   const toggleExpand = () => {
@@ -82,14 +84,15 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
     return () => window.removeEventListener('resize', checkOverflow);
   }, [inputValue, isExpanded]);
 
-  // Track and publish the composer height as a CSS variable for layout spacing
+  // Track and publish the composer height as a CSS variable only when viewport-fixed
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (withinPane) return;
     const el = containerRef.current;
     if (!el) return;
     const setVar = () => {
       const h = el.offsetHeight || 0;
-      document.documentElement.style.setProperty('--composer-height', `${h + 12}px`);
+      document.documentElement.style.setProperty('--composer-height', `${h + COMPOSER_HEIGHT_OFFSET}px`);
     };
     setVar();
     const ro = new ResizeObserver(() => setVar());
@@ -100,10 +103,14 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
       ro.disconnect();
       window.removeEventListener('resize', onResize);
     };
-  }, []);
+  }, [withinPane]);
 
   return (
-    <div ref={containerRef} className="fixed bottom-0 left-0 right-0 px-3 sm:px-6 bg-gray-100 dark:bg-zinc-950 z-50">
+    <div ref={containerRef} className={cn(
+      withinPane
+        ? "w-full px-3 sm:px-6 bg-gray-100 dark:bg-zinc-950"
+        : "fixed bottom-0 left-0 right-0 px-3 sm:px-6 bg-gray-100 dark:bg-zinc-950 z-50"
+    )}>
       {showExpandButton && (
         <button
           onClick={toggleExpand}

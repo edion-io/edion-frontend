@@ -14,7 +14,8 @@ import useInlineMath from '../hooks/useInlineMath';
 import LatexView from '../components/Editor/LatexView';
 import { buildLatexDocument } from '../lib/buildLatex';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
-import { X } from 'lucide-react';
+import DragHandle from '../components/DragHandle';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const Chat = () => {
   const [userSettings, setUserSettings] = useState<UserSettingsType>(getUserSettingsFromStorage());
@@ -116,11 +117,27 @@ const Chat = () => {
   const [execFormatCommand, setExecFormatCommand] = useState<((command: string, value?: string) => void) | null>(null);
   const [showRawLatex, setShowRawLatex] = useState(false);
   const suppressLatexSyncRef = useRef(false);
+  // When true, the latest editorLatex update came from the WYSIWYG editor.
+  // In that case we must not re-parse LaTeX back to HTML or we'll reset the caret.
+  const skipPopulateFromEditorRef = useRef(false);
   const [editorOnLeft, setEditorOnLeft] = useState(true);
   const [isDraggingPane, setIsDraggingPane] = useState(false);
   const [dragOverEditor, setDragOverEditor] = useState(false);
   const [dragOverChat, setDragOverChat] = useState(false);
 
+  const handleKeyboardSwap = (pane: 'editor' | 'chat', direction: 'left' | 'right' | 'toggle') => {
+    if (direction === 'toggle') {
+      setEditorOnLeft(prev => !prev);
+      return;
+    }
+    if (pane === 'editor') {
+      setEditorOnLeft(direction === 'left');
+      return;
+    }
+    // pane === 'chat'
+    setEditorOnLeft(direction === 'right');
+  };
+  
   const handleIndent = () => {
     document.execCommand('indent');
   };
@@ -146,6 +163,12 @@ const Chat = () => {
   // Populate WYSIWYG when deterministic LaTeX is set
   useEffect(() => {
     if (showEditorSplit && editorLatex) {
+      // If LaTeX was produced by the editor itself, skip re-populating HTML
+      // to avoid resetting the user's caret/selection.
+      if (skipPopulateFromEditorRef.current) {
+        skipPopulateFromEditorRef.current = false;
+        return;
+      }
       try {
         const html = parseLatexToHtml(editorLatex);
         // Prevent immediate LaTeX rebuild caused by this programmatic HTML set
@@ -172,6 +195,9 @@ const Chat = () => {
     }
     try {
       const doc = buildLatexDocument(editorContent);
+      // Mark that this LaTeX originated from the editor so populate step won't
+      // re-parse it back into HTML and clobber the caret position.
+      skipPopulateFromEditorRef.current = true;
       setEditorLatex(doc);
     } catch (_e) {
       // ignore conversion failures during typing
@@ -284,48 +310,44 @@ const Chat = () => {
           goToSettings={goToSettings}
         />
 
-          <div className={`flex-1 flex w-full`}>
-            {showEditorSplit ? (
-              <ResizablePanelGroup direction="horizontal" className="w-full">
+        <AnimatePresence mode="wait" initial={false}>
+          {showEditorSplit ? (
+            <motion.div
+              key="split"
+              className="flex-1 flex w-full min-h-0"
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+            >
+              <ResizablePanelGroup direction="horizontal" className="w-full min-h-0">
                 {editorOnLeft ? (
                   <>
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full border-r border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
+                        className={`h-full min-h-0 p-3 flex flex-col transition-all duration-200 ${dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
                         onDragOver={(e) => { e.preventDefault(); setDragOverEditor(true); }}
                         onDragEnter={() => setDragOverEditor(true)}
                         onDragLeave={() => setDragOverEditor(false)}
-                        onDrop={(e) => { const src = e.dataTransfer.getData('text/pane'); if (src === 'chat') setEditorOnLeft(false); setDragOverEditor(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
+                        onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'chat') setEditorOnLeft(false); setDragOverEditor(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Editor</div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              className="rounded-md w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                              onClick={() => setShowEditorSplit(false)}
-                              title="Close editor"
-                              aria-label="Close editor"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                            <button
-                            className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('text/pane', 'editor');
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                          <DragHandle
+                            paneType="editor"
+                            isDragging={isDraggingPane}
+                            onDragStart={() => {
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
-                            onDragEnd={() => { setIsDraggingPane(false); setDragOverEditor(false); setDragOverChat(false); document.body.classList.remove('dragging-pane'); }}
-                            title="Drag to swap panes"
-                            aria-label="Drag editor pane"
-                          >
-                            <span className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${isDraggingPane ? 'animate-pulse' : ''}`} />
-                          </button>
-                          </div>
+                            onDragEnd={() => {
+                              setIsDraggingPane(false);
+                              setDragOverEditor(false);
+                              setDragOverChat(false);
+                              document.body.classList.remove('dragging-pane');
+                            }}
+                            onKeySwap={(dir) => handleKeyboardSwap('editor', dir)}
+                          />
                         </div>
                         <div className="mb-2">
                           <EditorToolbar 
@@ -337,7 +359,7 @@ const Chat = () => {
                             onOutdent={handleOutdent}
                             editorRef={editorRef}
                             onNewListCreated={() => {}}
-                            onFormatCommandReady={(fn) => setExecFormatCommand(() => fn)}
+                            onFormatCommandReady={fn => setExecFormatCommand(() => fn)}
                           />
                         </div>
                         {
@@ -364,54 +386,44 @@ const Chat = () => {
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
+                        className={`h-full min-h-0 flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
                         onDragOver={(e) => { e.preventDefault(); setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
-                        onDrop={(e) => { const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(false); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
+                        onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(false); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
                       >
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              className="rounded-md w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                              onClick={() => setShowEditorSplit(false)}
-                              title="Close editor"
-                              aria-label="Close editor"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                            <button
-                            className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('text/pane', 'chat');
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                          <DragHandle
+                            paneType="chat"
+                            isDragging={isDraggingPane}
+                            onDragStart={() => {
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
-                            onDragEnd={() => { setIsDraggingPane(false); setDragOverEditor(false); setDragOverChat(false); document.body.classList.remove('dragging-pane'); }}
-                            title="Drag to swap panes"
-                            aria-label="Drag chat pane"
-                          >
-                            <span className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${isDraggingPane ? 'animate-pulse' : ''}`} />
-                          </button>
-                          </div>
+                            onDragEnd={() => {
+                              setIsDraggingPane(false);
+                              setDragOverEditor(false);
+                              setDragOverChat(false);
+                              document.body.classList.remove('dragging-pane');
+                            }}
+                            onKeySwap={(dir) => handleKeyboardSwap('chat', dir)}
+                          />
                         </div>
                         <ChatMessages
                           key={`messages-${forceUpdate}`}
                           activeTab={activeTab}
                           darkMode={userSettings.darkMode}
                           onEditMessage={handleEditMessage}
+                          reserveForFixedComposer={false}
                         />
-                        <div className="relative">
+                        <div className="relative px-3 pb-3">
                           <ChatInput
                             key={`input-${forceUpdate}`}
                             inputValue={inputValue}
                             setInputValue={setInputValue}
                             onSubmit={handleSubmit}
+                            withinPane
                           />
                         </div>
                       </div>
@@ -421,54 +433,44 @@ const Chat = () => {
                   <>
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
+                        className={`h-full min-h-0 flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
                         onDragOver={(e) => { e.preventDefault(); setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
-                        onDrop={(e) => { const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(true); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
+                        onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(true); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
                       >
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              className="rounded-md w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                              onClick={() => setShowEditorSplit(false)}
-                              title="Close editor"
-                              aria-label="Close editor"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                            <button
-                            className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('text/pane', 'chat');
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                          <DragHandle
+                            paneType="chat"
+                            isDragging={isDraggingPane}
+                            onDragStart={() => {
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
-                            onDragEnd={() => { setIsDraggingPane(false); setDragOverEditor(false); setDragOverChat(false); document.body.classList.remove('dragging-pane'); }}
-                            title="Drag to swap panes"
-                            aria-label="Drag chat pane"
-                          >
-                            <span className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${isDraggingPane ? 'animate-pulse' : ''}`} />
-                          </button>
-                          </div>
+                            onDragEnd={() => {
+                              setIsDraggingPane(false);
+                              setDragOverEditor(false);
+                              setDragOverChat(false);
+                              document.body.classList.remove('dragging-pane');
+                            }}
+                            onKeySwap={(dir) => handleKeyboardSwap('chat', dir)}
+                          />
                         </div>
                         <ChatMessages
                           key={`messages-${forceUpdate}`}
                           activeTab={activeTab}
                           darkMode={userSettings.darkMode}
                           onEditMessage={handleEditMessage}
+                          reserveForFixedComposer={false}
                         />
-                        <div className="relative">
+                        <div className="relative px-3 pb-3">
                           <ChatInput
                             key={`input-${forceUpdate}`}
                             inputValue={inputValue}
                             setInputValue={setInputValue}
                             onSubmit={handleSubmit}
+                            withinPane
                           />
                         </div>
                       </div>
@@ -476,10 +478,8 @@ const Chat = () => {
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
-                        className={`h-full border-l border-gray-200 dark:border-gray-800 p-3 flex flex-col transition-all duration-200 ${
-                          dragOverEditor
-                            ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]'
-                            : ''
+                        className={`h-full min-h-0 p-3 flex flex-col transition-all duration-200 ${
+                          dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''
                         }`}
                         onDragOver={(e) => {
                           e.preventDefault();
@@ -488,6 +488,7 @@ const Chat = () => {
                         onDragEnter={() => setDragOverEditor(true)}
                         onDragLeave={() => setDragOverEditor(false)}
                         onDrop={(e) => {
+                          e.preventDefault();
                           const src = e.dataTransfer.getData('text/pane');
                           if (src === 'chat') setEditorOnLeft(true);
                           setDragOverEditor(false);
@@ -499,23 +500,10 @@ const Chat = () => {
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             Editor
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              className="rounded-md w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                              onClick={() => setShowEditorSplit(false)}
-                              title="Close editor"
-                              aria-label="Close editor"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                            <button
-                            className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('text/pane', 'editor');
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-                              try { e.dataTransfer.setDragImage(img, 0, 0); } catch {}
+                          <DragHandle
+                            paneType="editor"
+                            isDragging={isDraggingPane}
+                            onDragStart={() => {
                               setIsDraggingPane(true);
                               document.body.classList.add('dragging-pane');
                             }}
@@ -525,16 +513,8 @@ const Chat = () => {
                               setDragOverChat(false);
                               document.body.classList.remove('dragging-pane');
                             }}
-                            title="Drag to swap panes"
-                            aria-label="Drag editor pane"
-                          >
-                            <span
-                              className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${
-                                isDraggingPane ? 'animate-pulse' : ''
-                              }`}
-                            />
-                          </button>
-                          </div>
+                            onKeySwap={(dir) => handleKeyboardSwap('editor', dir)}
+                          />
                         </div>
                         <div className="mb-2">
                           <EditorToolbar
@@ -571,27 +551,38 @@ const Chat = () => {
                   </>
                 )}
               </ResizablePanelGroup>
-            ) : (
+            </motion.div>
+          ) : (
+            <motion.div
+              key="single"
+              className="flex-1 flex w-full min-h-0"
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 16 }}
+              transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+            >
               <div className="w-full flex flex-col">
-            <ChatMessages
-              key={`messages-${forceUpdate}`}
-              activeTab={activeTab}
-              darkMode={userSettings.darkMode}
-              onEditMessage={handleEditMessage}
-            />
-            <div className="relative">
-              <ChatInput
-                key={`input-${forceUpdate}`}
-                inputValue={inputValue}
-                setInputValue={setInputValue}
-                onSubmit={handleSubmit}
-              />
-            </div>
+                <ChatMessages
+                  key={`messages-${forceUpdate}`}
+                  activeTab={activeTab}
+                  darkMode={userSettings.darkMode}
+                  onEditMessage={handleEditMessage}
+                  reserveForFixedComposer
+                />
+                <div className="relative">
+                  <ChatInput
+                    key={`input-${forceUpdate}`}
+                    inputValue={inputValue}
+                    setInputValue={setInputValue}
+                    onSubmit={handleSubmit}
+                  />
+                </div>
               </div>
-            )}
-          </div>
-        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+    </div>
   );
 };
 
