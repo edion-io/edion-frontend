@@ -372,7 +372,16 @@ const Chat = () => {
                       >
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
-                          <button
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="rounded-md w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                              onClick={() => setShowEditorSplit(false)}
+                              title="Close editor"
+                              aria-label="Close editor"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                            <button
                             className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                             draggable
                             onDragStart={(e) => {
@@ -389,6 +398,7 @@ const Chat = () => {
                           >
                             <span className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${isDraggingPane ? 'animate-pulse' : ''}`} />
                           </button>
+                          </div>
                         </div>
                         <ChatMessages
                           key={`messages-${forceUpdate}`}
@@ -419,7 +429,16 @@ const Chat = () => {
                       >
                         <div className="flex items-center justify-between px-3 pt-3 pb-2">
                           <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chat</div>
-                          <button
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="rounded-md w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                              onClick={() => setShowEditorSplit(false)}
+                              title="Close editor"
+                              aria-label="Close editor"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                            <button
                             className="rounded-full w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                             draggable
                             onDragStart={(e) => {
@@ -436,6 +455,7 @@ const Chat = () => {
                           >
                             <span className={`inline-block w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 ${isDraggingPane ? 'animate-pulse' : ''}`} />
                           </button>
+                          </div>
                         </div>
                         <ChatMessages
                           key={`messages-${forceUpdate}`}
