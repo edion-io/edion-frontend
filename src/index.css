@@ -202,6 +202,13 @@
   .theme-change-immediate {
     transition: none !important;
   }
+
+  /* Suppress default image/link drag visuals during pane swap */
+  .dragging-pane, .dragging-pane * {
+    -webkit-user-drag: none !important;
+    user-select: none !important;
+    cursor: grabbing !important;
+  }
   
   .theme-change-immediate svg,
   .theme-change-immediate path,

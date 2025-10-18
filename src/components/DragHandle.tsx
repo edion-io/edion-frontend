@@ -28,9 +28,11 @@ export const DRAG_HANDLE_BUTTON_CLASSES = [
 const DragHandle: React.FC<DragHandleProps> = ({ paneType, isDragging, onDragStart, onDragEnd, onKeySwap }) => {
   return (
     <button
-      className={DRAG_HANDLE_BUTTON_CLASSES}
+      className={DRAG_HANDLE_BUTTON_CLASSES + ' cursor-grab active:cursor-grabbing'}
       draggable
       onDragStart={(e) => {
+        // Indicate this is a move operation to avoid the browser's green plus badge
+        try { e.dataTransfer.effectAllowed = 'move'; } catch (_e) {}
         e.dataTransfer.setData('text/pane', paneType);
 const img = new Image();
 img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';

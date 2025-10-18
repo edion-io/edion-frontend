@@ -113,7 +113,7 @@ const Chat = () => {
   // Editor state for split view (must be declared before any early returns)
   const editorRef = useRef<HTMLDivElement>(null);
   const [editorContent, setEditorContent] = useState<string>('');
-  const { insertMathDelimiters } = useInlineMath();
+  const { insertMathDelimiters } = useInlineMath(editorRef);
   const [execFormatCommand, setExecFormatCommand] = useState<((command: string, value?: string) => void) | null>(null);
   const [showRawLatex, setShowRawLatex] = useState(false);
   const suppressLatexSyncRef = useRef(false);
@@ -326,7 +326,7 @@ const Chat = () => {
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
                         className={`h-full min-h-0 p-3 flex flex-col transition-all duration-200 ${dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
-                        onDragOver={(e) => { e.preventDefault(); setDragOverEditor(true); }}
+                        onDragOver={(e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch(_e){}; setDragOverEditor(true); }}
                         onDragEnter={() => setDragOverEditor(true)}
                         onDragLeave={() => setDragOverEditor(false)}
                         onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'chat') setEditorOnLeft(false); setDragOverEditor(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
@@ -387,7 +387,7 @@ const Chat = () => {
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
                         className={`h-full min-h-0 flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
-                        onDragOver={(e) => { e.preventDefault(); setDragOverChat(true); }}
+                        onDragOver={(e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch(_e){}; setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
                         onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(false); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
@@ -434,7 +434,7 @@ const Chat = () => {
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
                         className={`h-full min-h-0 flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
-                        onDragOver={(e) => { e.preventDefault(); setDragOverChat(true); }}
+                        onDragOver={(e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch(_e){}; setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
                         onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(true); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
@@ -483,6 +483,7 @@ const Chat = () => {
                         }`}
                         onDragOver={(e) => {
                           e.preventDefault();
+                          try { e.dataTransfer.dropEffect = 'move'; } catch(_e){}
                           setDragOverEditor(true);
                         }}
                         onDragEnter={() => setDragOverEditor(true)}

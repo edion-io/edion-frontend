@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 /**
  * Hook to handle inline math operations in the WYSIWYG editor
  */
-export const useInlineMath = () => {
+export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
   // Add state to track empty math fields pending deletion
   const emptyMathFieldRef = useRef<HTMLElement | null>(null);
 
@@ -65,7 +65,7 @@ export const useInlineMath = () => {
    * Focus the editor and position cursor
    */
   const focusEditor = () => {
-    const editor = document.querySelector('[contenteditable="true"]') as HTMLElement;
+    const editor = editorRef?.current || (document.querySelector('[contenteditable="true"]') as HTMLElement | null);
     if (editor) {
       editor.focus();
     }
@@ -141,7 +141,7 @@ export const useInlineMath = () => {
       
       // If we didn't find math fields or no parent provided, try finding them in the editor
       if (!mathFields || mathFields.length === 0) {
-        const editor = document.querySelector('[contenteditable="true"]');
+        const editor = editorRef?.current || document.querySelector('[contenteditable="true"]');
         if (editor) {
           mathFields = editor.querySelectorAll('math-field');
         }
@@ -173,7 +173,7 @@ export const useInlineMath = () => {
           (newMathField as HTMLElement).focus();
           
           // Store a reference to prevent automatic refocus on the editor
-          const editor = document.querySelector('[contenteditable="true"]');
+          const editor = editorRef?.current || document.querySelector('[contenteditable="true"]');
           if (editor) {
             // Allow time for the focus to take effect
             setTimeout(() => {
@@ -246,6 +246,22 @@ export const useInlineMath = () => {
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) return;
 
+    // Ensure operations target the editor, not the background/chat
+    const editorEl = editorRef?.current || (document.querySelector('[contenteditable="true"]') as HTMLElement | null);
+    if (editorEl) {
+      const currentRange = selection.getRangeAt(0);
+      const inEditor = editorEl.contains(currentRange.startContainer);
+      if (!inEditor) {
+        // Move caret to end of the editor
+        const newRange = document.createRange();
+        newRange.selectNodeContents(editorEl);
+        newRange.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        editorEl.focus();
+      }
+    }
+
     const range = selection.getRangeAt(0);
     const container = range.startContainer;
 
@@ -315,9 +331,7 @@ export const useInlineMath = () => {
       if (!newMathField) return;
 
       // After insertion, focus the newly created math field so the caret is inside it
-      const editor = document.querySelector(
-        '[contenteditable="true"]',
-      ) as HTMLElement | null;
+      const editor = (editorRef?.current as HTMLElement | null) || (document.querySelector('[contenteditable="true"]') as HTMLElement | null);
 
       // Attach an undo handler so Cmd/Ctrl+Z inside the field triggers editor undo
       const handleFieldUndo = (e: KeyboardEvent) => {
