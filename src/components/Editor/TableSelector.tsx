@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Button } from "../ui/button";
-import { Grid, Table as TableIcon } from "lucide-react";
+import { Table as TableIcon } from "lucide-react";
 
 interface TableSelectorProps {
   onSelectTable: (rows: number, cols: number) => void;
 }
 
 export const TableSelector = ({ onSelectTable }: TableSelectorProps) => {
-  const [hoveredCell, setHoveredCell] = useState({ row: 0, col: 0 });
+  const [hoveredCell, setHoveredCell] = useState({ row: -1, col: -1 });
+  const [open, setOpen] = useState(false);
   
   // Create a grid with 10x10 cells for selection
   const maxRows = 10;
@@ -22,11 +23,15 @@ export const TableSelector = ({ onSelectTable }: TableSelectorProps) => {
     // Add 1 to rows and cols because arrays are 0-indexed
     const rows = hoveredCell.row + 1;
     const cols = hoveredCell.col + 1;
-    onSelectTable(rows, cols);
+    try {
+      onSelectTable(rows, cols);
+    } finally {
+      setOpen(false);
+    }
   };
   
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="flex items-center gap-1">
           <TableIcon className="h-4 w-4" />
@@ -55,7 +60,7 @@ export const TableSelector = ({ onSelectTable }: TableSelectorProps) => {
             ))}
           </div>
           <div className="text-center text-xs text-muted-foreground">
-            {hoveredCell.row > 0 || hoveredCell.col > 0
+            {hoveredCell.row >= 0 && hoveredCell.col >= 0
               ? `${hoveredCell.row + 1} × ${hoveredCell.col + 1}`
               : 'Hover to select table size'}
           </div>

@@ -74,7 +74,7 @@ const TabBar: React.FC<TabBarProps> = ({
     const plusButtonWidth = plusButtonRef.current.offsetWidth;
     const dropdownWidth = 32; 
     
-    let availableWidth = containerWidth - plusButtonWidth - dropdownWidth - 16; 
+    const availableWidth = containerWidth - plusButtonWidth - dropdownWidth - 16; 
     
     const maxVisibleTabs = Math.max(1, Math.floor(availableWidth / 120));
     

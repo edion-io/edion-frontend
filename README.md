@@ -50,6 +50,24 @@ npm run preview
 Give me a combination of a context exercise and a writing exercise for a 6th grade student learning history. It should be an exercise on London's history.
 ```
 
+### Trigger Matching Rules
+- **Case sensitivity**: Matching is case-sensitive.
+- **Whitespace**: Leading/trailing whitespace is ignored; internal whitespace must match exactly.
+- **Match type**: Full-string equality after trimming; substrings or extra text will not match.
+
+Examples:
+- Will trigger:
+  - Exactly the instruction above (character-for-character).
+  - The same instruction with added leading/trailing whitespace, e.g. `"  <instruction>  "`.
+- Will NOT trigger:
+  - `give me a combination ...` (different casing).
+  - The instruction with double spaces or newlines inserted inside.
+  - `Please, <instruction>` or `<instruction> thanks!` (extra surrounding text).
+
+Suggested quick tests:
+- Send the instruction with different casing (e.g., lowercase first letter) → expect no split view.
+- Send the instruction with extra leading/trailing spaces or a trailing newline → expect split view.
+
 - Behavior:
   - The assistant returns a LaTeX exercise (deterministic mapping).
   - The chat view splits: the left pane shows a WYSIWYG editor with the formatted exercise; the right pane keeps the conversation.
@@ -139,6 +157,18 @@ Defined in `src/App.tsx`:
 ## Configuration
 - `vite.config.ts` sets alias `@` → `src`. In development, `lovable-tagger` is enabled but not required for production.
 - Port defaults to 8080 in dev server configuration.
+
+### Backend API URL
+- Set the backend base URL using an environment variable. Supported names (in order): `VITE_API_URL`, `NEXT_PUBLIC_API_URL`, `REACT_APP_API_URL`.
+- For Vite, add this to `.env` or `.env.local` in the project root:
+
+```
+VITE_API_URL=http://127.0.0.1:5057
+```
+
+- In development and test, if the variable is not set, the app falls back to `http://127.0.0.1:5057`.
+- In production-like modes, missing configuration will throw a clear error at runtime.
+- After changing env files, restart the dev server (`npm run dev`).
 
 ## Deployment
 - Build with `npm run build` and serve files in `dist/` with any static host (e.g., Nginx, Vercel, Netlify). Ensure SPA fallback to `index.html` is enabled for client-side routing.

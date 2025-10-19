@@ -102,6 +102,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({ inputValue, setInputVa
     return () => {
       ro.disconnect();
       window.removeEventListener('resize', onResize);
+      document.documentElement.style.removeProperty('--composer-height');
     };
   }, [withinPane]);
 

@@ -5,7 +5,7 @@ import { HiTrash } from "react-icons/hi";
 export const showChatDeletedToast = (undoDelete?: () => void) => {
   toast("Chat deleted", {
     description: "This conversation has been removed.",
-    icon: React.createElement(HiTrash, { className: "h-5 w-5 text-red-600" }),
+    icon: React.createElement(HiTrash, { className: "h-5 w-5 text-red-600 dark:text-red-300" }),
     action: undoDelete ? {
       label: "Undo",
       onClick: () => undoDelete(), 

@@ -7,6 +7,10 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
   // Add state to track empty math fields pending deletion
   const emptyMathFieldRef = useRef<HTMLElement | null>(null);
 
+  // Track per-field undo handlers without mutating DOM nodes
+  const undoHandlersRef = useRef<WeakMap<HTMLElement, (e: KeyboardEvent) => void>>(new WeakMap());
+  interface MathFieldElement extends HTMLElement { value?: string }
+
   /**
    * Find a math field element starting from a given node
    */
@@ -64,21 +68,22 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
   /**
    * Focus the editor and position cursor
    */
-  const focusEditor = () => {
+  const focusEditor = useCallback(() => {
     const editor = editorRef?.current || (document.querySelector('[contenteditable="true"]') as HTMLElement | null);
     if (editor) {
       editor.focus();
     }
-  };
+  }, [editorRef]);
 
   /**
    * Remove a math field and clean up spacing to maintain single cursor position
    */
-  const removeMathField = (mathField: HTMLElement) => {
+  const removeMathField = useCallback((mathField: HTMLElement) => {
     // Clean up event listener to prevent memory leaks
-    if ((mathField as any)._undoHandler) {
-      mathField.removeEventListener('keydown', (mathField as any)._undoHandler);
-      delete (mathField as any)._undoHandler;
+    const handler = undoHandlersRef.current.get(mathField);
+    if (handler) {
+      mathField.removeEventListener('keydown', handler);
+      undoHandlersRef.current.delete(mathField);
     }
 
     const nextSibling = mathField.nextSibling;
@@ -109,7 +114,7 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
     
     mathField.remove();
     focusEditor();
-  };
+  }, [focusEditor]);
 
   /**
    * Position cursor after a node and insert text
@@ -130,63 +135,44 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
    * Initialize a newly created math field and set up cursor position
    */
   const initializeMathField = (parentElement: Element | null) => {
-    setTimeout(() => {
-      // Find the math field in the current context
-      let mathFields: NodeListOf<Element> | undefined;
-      
-      // First try the direct parent element if provided
-      if (parentElement) {
-        mathFields = parentElement.querySelectorAll('math-field');
+    // Perform DOM queries and synchronous cleanup in a deterministic frame
+    requestAnimationFrame(() => {
+      // Determine the context to search for the newly inserted math field
+      const contextRoot = (parentElement as Element | null) ||
+        (editorRef?.current || (document.querySelector('[contenteditable="true"]') as Element | null));
+
+      if (!contextRoot) return;
+
+      const mathFields = contextRoot.querySelectorAll('math-field');
+      if (!mathFields || mathFields.length === 0) return;
+
+      const newMathField = mathFields[mathFields.length - 1] as HTMLElement;
+
+      // Ensure the math field is visible in viewport
+      if ('scrollIntoView' in newMathField) {
+        newMathField.scrollIntoView({ block: 'nearest' });
       }
-      
-      // If we didn't find math fields or no parent provided, try finding them in the editor
-      if (!mathFields || mathFields.length === 0) {
-        const editor = editorRef?.current || document.querySelector('[contenteditable="true"]');
-        if (editor) {
-          mathFields = editor.querySelectorAll('math-field');
+
+      // Clean up any redundant spacing around the math field before adding our own
+      cleanupRedundantSpacing(newMathField);
+
+      // Add a single zero-width space after the field for cursor positioning
+      // Only if there isn't already a space or another math field immediately after
+      const nextSibling = newMathField.nextSibling;
+      const needsSpace = !nextSibling ||
+        (nextSibling.nodeType === Node.ELEMENT_NODE && (nextSibling as HTMLElement).tagName === 'MATH-FIELD');
+
+      if (needsSpace) {
+        addZeroWidthSpace(newMathField);
+      }
+
+      // Consolidated focus handling in a single follow-up frame after layout
+      requestAnimationFrame(() => {
+        if (document.activeElement !== newMathField) {
+          newMathField.focus();
         }
-      }
-      
-      // Check if we found any math fields
-      if (mathFields && mathFields.length > 0) {
-        const newMathField = mathFields[mathFields.length - 1];
-        if (newMathField) {
-          // Ensure the math field is visible in viewport
-          if ('scrollIntoView' in newMathField) {
-            (newMathField as HTMLElement).scrollIntoView({ block: 'nearest' });
-          }
-          
-          // Clean up any redundant spacing around the math field before adding our own
-          cleanupRedundantSpacing(newMathField);
-          
-          // Add a single zero-width space after the field for cursor positioning
-          // Only if there isn't already a space or another math field immediately after
-          const nextSibling = newMathField.nextSibling;
-          const needsSpace = !nextSibling || 
-            (nextSibling.nodeType === Node.ELEMENT_NODE && (nextSibling as HTMLElement).tagName === 'MATH-FIELD');
-          
-          if (needsSpace) {
-          addZeroWidthSpace(newMathField);
-          }
-          
-          // Focus the math field - this needs to happen after spacing cleanup
-          (newMathField as HTMLElement).focus();
-          
-          // Store a reference to prevent automatic refocus on the editor
-          const editor = editorRef?.current || document.querySelector('[contenteditable="true"]');
-          if (editor) {
-            // Allow time for the focus to take effect
-            setTimeout(() => {
-              // Prevent any pending focus operations on the editor
-              const activeElement = document.activeElement;
-              if (activeElement !== newMathField) {
-                (newMathField as HTMLElement).focus();
-              }
-            }, 50);
-          }
-        }
-      }
-    }, 0);
+      });
+    });
   };
 
   /**
@@ -340,18 +326,13 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
           // Move focus back to the editor then invoke native undo
           if (editor) {
             editor.focus();
-            // Try modern approach first, fallback to execCommand
-            if (editor.isContentEditable && 'undoManager' in editor) {
-              // Future: Use UndoManager API when widely supported
-              document.execCommand('undo');
-            } else {
-              document.execCommand('undo');
-            }
+            // Future: Integrate UndoManager API when widely supported
+            document.execCommand('undo');
           }
         }
       };
-      (newMathField as any)._undoHandler = handleFieldUndo;
       newMathField.addEventListener('keydown', handleFieldUndo);
+      undoHandlersRef.current.set(newMathField, handleFieldUndo);
 
       // Focus the math field to place the caret inside it
       newMathField.focus();
@@ -380,7 +361,7 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
       // Normal case: just insert at current cursor position
       insertMathFieldAtCursor();
     }
-  }, []);
+  }, [editorRef]);
 
   /**
    * Handle deletion of empty math fields
@@ -396,7 +377,7 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
         event.preventDefault();
         
         // Find the parent paragraph or appropriate container
-        let container = target.parentElement;
+        const container = target.parentElement;
         
         
         // Create a new paragraph after the math field's container
@@ -449,15 +430,13 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
             
             editor.focus();
           }
-        } else {
-          
         }
         return;
       }
       
       // Handle backspace and delete for empty math fields
       if (event.key === 'Backspace' || event.key === 'Delete') {
-        const mathField = target as any;
+        const mathField = target as MathFieldElement;
         
         
         // Only proceed if the field is empty
@@ -482,11 +461,9 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
               }
               mathField.removeEventListener('input', clearPendingState);
             };
-            
             mathField.addEventListener('input', clearPendingState);
           } else {
             // This is the second delete, remove the field
-            
             removeMathField(mathField);
             emptyMathFieldRef.current = null;
           }
@@ -500,7 +477,7 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
         }
       }
     }
-  }, []);
+  }, [removeMathField]);
 
   /**
    * Handle keyboard shortcuts and navigation
@@ -511,7 +488,6 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
       insertMathDelimiters();
       return;
     }
-
     // Only handle backspace for text nodes outside math fields
     if (event.key === 'Backspace') {
       const target = event.target as HTMLElement;
@@ -574,7 +550,7 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
         }
       }
     }
-  }, [insertMathDelimiters]);
+  }, [insertMathDelimiters, removeMathField]);
 
   // Add event listener for handling math field deletion
   useEffect(() => {

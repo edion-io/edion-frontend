@@ -6,7 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChatHistoryItem, ChatTab } from '../types';
 import { cn } from '@/lib/utils';
 import FileUploadMenu from './FileUploadMenu';
-import { getDeterministicResponse } from '@/lib/intentMappings';
+import { getDeterministicResponse, getFallbackMessage } from '@/lib/intentMappings';
+import { showErrorToast } from '@/utils/toastUtils';
 
 const Search = () => {
   const [searchInput, setSearchInput] = useState("");
@@ -46,6 +47,10 @@ const Search = () => {
       } catch (err) {
         console.error("getDeterministicResponse failed", err);
         setError(err instanceof Error ? err.message : "Unknown error");
+        showErrorToast(
+          "Couldn't generate a precise reply",
+          "Showing a generic helper message instead."
+        );
         deterministic = null; // safe fallback ensures UI remains stable
       }
 
@@ -61,9 +66,7 @@ const Search = () => {
           },
           {
             id: 2,
-            text: (deterministic ?? (searchInput.trim().toLowerCase().includes('exercise')
-              ? "What grade are the students?"
-              : "Hello! I'm here to help. What can I assist you with today?")),
+            text: (deterministic ?? getFallbackMessage(searchInput)),
             isUser: false,
           }
         ],
@@ -182,9 +185,12 @@ const Search = () => {
                   maxHeight: '200px'
                 }}
                 aria-label="Search box"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'search-error-message' : undefined}
                 value={searchInput}
                 onChange={(e) => {
                   setSearchInput(e.target.value);
+                  if (error) setError(null);
                   // Auto-adjust height
                   e.target.style.height = 'auto';
                   e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
@@ -234,6 +240,16 @@ const Search = () => {
             </div>
           </div>
         </div>
+        {error !== null && (
+          <div
+            id="search-error-message"
+            role="alert"
+            aria-live="polite"
+            className="mt-2 text-sm text-red-600 dark:text-red-400 px-1"
+          >
+            {error}
+          </div>
+        )}
       </form>
     </motion.div>
   );

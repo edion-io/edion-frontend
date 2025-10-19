@@ -22,6 +22,7 @@ import TableSelector from "./TableSelector";
 import ColorPicker from "./ColorPicker";
 import TextColorIcon from "./TextColorIcon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { computeDesiredFormattingState } from "./markerFormattingLogic";
 
 interface EditorToolbarProps {
   showRawLatex: boolean;
@@ -51,7 +52,6 @@ interface ListContext {
 }
 
 interface ListItemData {
-  html: string;
   textContent: string;
   indentLevel: string;
   paddingLeft: string;
@@ -68,168 +68,254 @@ interface AlignmentContext {
   alignedParentNode: HTMLElement | null;
 }
 
-// Selection preservation types and utilities
-interface TextSelectionState {
-  hasSelection: boolean;
-  selectedText: string;
-  startText: string;
-  endText: string;
-  startOffset: number;
-  endOffset: number;
-  contextBefore: string;
-  contextAfter: string;
-}
-
-// Capture the current text selection with context for restoration
-const captureTextSelection = (editorElement: HTMLElement): TextSelectionState => {
-  const selection = window.getSelection();
-  
-  if (!selection || !selection.rangeCount || selection.isCollapsed) {
-    return {
-      hasSelection: false,
-      selectedText: '',
-      startText: '',
-      endText: '',
-      startOffset: 0,
-      endOffset: 0,
-      contextBefore: '',
-      contextAfter: ''
-    };
-  }
-  
-  const range = selection.getRangeAt(0);
-  const selectedText = range.toString();
-  
-  // Get the full text content of the editor
-  const fullText = editorElement.textContent || '';
-  
-  // Find the position of selected text in the full text
-  const beforeRange = document.createRange();
-  beforeRange.setStart(editorElement, 0);
-  beforeRange.setEnd(range.startContainer, range.startOffset);
-  const textBefore = beforeRange.toString();
-  
-  const afterRange = document.createRange();
-  afterRange.setStart(range.endContainer, range.endOffset);
-  afterRange.setEnd(editorElement, editorElement.childNodes.length);
-  const textAfter = afterRange.toString();
-  
-  // Get some context around the selection for better matching
-  const contextLength = 20;
-  const contextBefore = textBefore.slice(-contextLength);
-  const contextAfter = textAfter.slice(0, contextLength);
-  
-  return {
-    hasSelection: true,
-    selectedText,
-    startText: textBefore,
-    endText: textAfter,
-    startOffset: textBefore.length,
-    endOffset: textBefore.length + selectedText.length,
-    contextBefore,
-    contextAfter
-  };
+// Minimal wrapper to centralize use of deprecated Editing API and avoid TS deprecation warnings
+const execLegacyCommand = (commandId: string, value?: string, showUI: boolean = false): boolean => {
+  // Narrow the surface we touch on document for deprecated commands
+  const doc = document as unknown as { execCommand?: (cmd: string, showUI?: boolean, value?: string) => boolean };
+  return doc.execCommand ? doc.execCommand(commandId, showUI, value) : false;
 };
 
-// Restore text selection after DOM changes
-const restoreTextSelection = (editorElement: HTMLElement, selectionState: TextSelectionState): void => {
-  if (!selectionState.hasSelection || !selectionState.selectedText) {
-    return;
+const isLegacyCommandSupported = (commandId: string): boolean => {
+  try {
+    const doc = document as unknown as { queryCommandSupported?: (cmd: string) => boolean };
+    return doc.queryCommandSupported ? doc.queryCommandSupported(commandId) : true;
+  } catch {
+    return true;
   }
-  
-  // Get the current full text after DOM changes
-  const currentFullText = editorElement.textContent || '';
-  
-  // Try to find the selected text in the new structure
-  // First, try exact position match
-  let startPos = selectionState.startOffset;
-  let endPos = selectionState.endOffset;
-  
-  // If the text at the expected position doesn't match, search for it
-  if (currentFullText.slice(startPos, endPos) !== selectionState.selectedText) {
-    // Search for the selected text using context
-    const searchText = selectionState.contextBefore + selectionState.selectedText + selectionState.contextAfter;
-    const foundIndex = currentFullText.indexOf(searchText);
-    
-    if (foundIndex !== -1) {
-      startPos = foundIndex + selectionState.contextBefore.length;
-      endPos = startPos + selectionState.selectedText.length;
-    } else {
-      // Fallback: search for just the selected text
-      const directIndex = currentFullText.indexOf(selectionState.selectedText);
-      if (directIndex !== -1) {
-        startPos = directIndex;
-        endPos = startPos + selectionState.selectedText.length;
-      } else {
-        // If we still can't find exact text, try finding the closest match
-        // This can happen when list markers are added/removed
-        const words = selectionState.selectedText.split(/\s+/).filter(w => w.length > 0);
-        if (words.length > 0) {
-          // Try to find the first few words
-          const partialText = words.slice(0, Math.min(3, words.length)).join(' ');
-          const partialIndex = currentFullText.indexOf(partialText);
-          if (partialIndex !== -1) {
-            startPos = partialIndex;
-            endPos = Math.min(startPos + selectionState.selectedText.length, currentFullText.length);
-          } else {
-            // Cannot find the text, give up
-            return;
-          }
-        } else {
-          return;
+};
+
+const isLegacyCommandEnabled = (commandId: string): boolean => {
+  try {
+    const doc = document as unknown as { queryCommandEnabled?: (cmd: string) => boolean };
+    return doc.queryCommandEnabled ? doc.queryCommandEnabled(commandId) : true;
+  } catch {
+    return true;
+  }
+};
+
+const getLegacyCommandState = (commandId: string): boolean => {
+  try {
+    const doc = document as unknown as { queryCommandState?: (cmd: string) => boolean };
+    return doc.queryCommandState ? doc.queryCommandState(commandId) : false;
+  } catch {
+    return false;
+  }
+};
+
+// Selection preservation types and utilities (marker-based)
+interface TextSelectionState {
+  hasSelection: boolean;
+  isCollapsed: boolean;
+  startMarkerId?: string;
+  endMarkerId?: string;
+  // Minimal fallback context if markers are lost
+  startPath?: number[];
+  endPath?: number[];
+}
+
+const generateMarkerId = (suffix: string): string => {
+  return `sel-marker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${suffix}`;
+};
+
+const createMarkerSpan = (id: string): HTMLSpanElement => {
+  const span = document.createElement('span');
+  span.setAttribute('data-selection-marker', 'true');
+  span.setAttribute('data-marker-id', id);
+  span.id = id;
+  span.contentEditable = 'false';
+  span.style.display = 'inline-block';
+  span.style.width = '0px';
+  span.style.overflow = 'hidden';
+  span.style.lineHeight = '0';
+  span.style.padding = '0';
+  span.style.margin = '0';
+  span.style.border = '0';
+  span.style.userSelect = 'none';
+  span.ariaHidden = 'true';
+  // zero-width no-break to ensure presence without visible impact
+  span.textContent = '\uFEFF';
+  return span;
+};
+
+const getNodeIndexInParent = (node: Node): number => {
+  if (!node.parentNode) return -1;
+  const parent = node.parentNode;
+  let index = 0;
+  for (let child = parent.firstChild; child; child = child.nextSibling) {
+    if (child === node) return index;
+    index++;
+  }
+  return -1;
+};
+
+const buildIndexPathFromRoot = (root: HTMLElement, node: Node): number[] => {
+  const path: number[] = [];
+  let current: Node | null = node;
+  while (current && current !== root) {
+    const index = getNodeIndexInParent(current);
+    if (index === -1) break;
+    path.unshift(index);
+    current = current.parentNode;
+  }
+  return path;
+};
+
+const resolveNodeByPath = (root: HTMLElement, path: number[]): Node | null => {
+  let current: Node = root;
+  for (const index of path) {
+    const next = current.childNodes.item(index);
+    if (!next) return null;
+    current = next;
+  }
+  return current;
+};
+
+// Capture the current selection by inserting DOM markers
+const captureTextSelection = (editorElement: HTMLElement): TextSelectionState => {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount) {
+    return { hasSelection: false, isCollapsed: true };
+  }
+
+  const range = selection.getRangeAt(0);
+  const isCollapsed = range.collapsed;
+
+  // Insert end marker first to avoid offset shifts
+  const endId = generateMarkerId('end');
+  const endMarker = createMarkerSpan(endId);
+  const endRange = range.cloneRange();
+  endRange.collapse(false);
+  try {
+    endRange.insertNode(endMarker);
+  } catch (e) {
+    // Fallback: try placing as sibling of container if insert fails
+    const container = endRange.commonAncestorContainer;
+    if (container && container.parentNode) {
+      try { container.parentNode.insertBefore(endMarker, container.nextSibling); } catch (err) {
+        if (import.meta.env.DEV) console.warn('captureTextSelection: end insert fallback failed');
+      }
+    }
+  }
+
+  let startId: string | undefined;
+  let startMarker: HTMLSpanElement | null = null;
+  if (!isCollapsed) {
+    startId = generateMarkerId('start');
+    startMarker = createMarkerSpan(startId);
+    const startRange = range.cloneRange();
+    startRange.collapse(true);
+    try {
+      startRange.insertNode(startMarker);
+    } catch (e) {
+      const container = startRange.commonAncestorContainer;
+      if (container && container.parentNode) {
+        try { container.parentNode.insertBefore(startMarker, container); } catch (err) {
+          if (import.meta.env.DEV) console.warn('captureTextSelection: start insert fallback failed');
         }
       }
     }
+  } else {
+    // collapsed: reuse end as the single marker, but treat as caret
+    startId = endId;
   }
-  
-  // Create a tree walker to find text nodes
-  const walker = document.createTreeWalker(
-    editorElement,
-    NodeFilter.SHOW_TEXT,
-    null
-  );
-  
-  let currentPos = 0;
-  let startNode: Node | null = null;
-  let endNode: Node | null = null;
-  let startNodeOffset = 0;
-  let endNodeOffset = 0;
-  
-  // Walk through text nodes to find start and end positions
-  let node: Node | null;
-  while (node = walker.nextNode()) {
-    const nodeLength = node.textContent?.length || 0;
-    
-    // Check if start position is in this node
-    if (startNode === null && currentPos + nodeLength >= startPos) {
-      startNode = node;
-      startNodeOffset = Math.max(0, startPos - currentPos);
-    }
-    
-    // Check if end position is in this node
-    if (endNode === null && currentPos + nodeLength >= endPos) {
-      endNode = node;
-      endNodeOffset = Math.min(nodeLength, endPos - currentPos);
-      break;
-    }
-    
-    currentPos += nodeLength;
-  }
-  
-  // Create and apply the selection
-  if (startNode && endNode) {
-    try {
-      const range = document.createRange();
-      range.setStart(startNode, startNodeOffset);
-      range.setEnd(endNode, endNodeOffset);
-      
-      const selection = window.getSelection();
-      if (selection) {
-        selection.removeAllRanges();
-        selection.addRange(range);
+
+  // Record minimal fallback paths from editor to markers
+  const startNodeForPath: Node | null = (startMarker ?? endMarker);
+  const startPath = startNodeForPath ? buildIndexPathFromRoot(editorElement, startNodeForPath) : undefined;
+  const endPath = (!isCollapsed) ? buildIndexPathFromRoot(editorElement, endMarker) : startPath;
+
+  return {
+    hasSelection: true,
+    isCollapsed,
+    startMarkerId: startId,
+    endMarkerId: isCollapsed ? undefined : endId,
+    startPath,
+    endPath
+  };
+};
+
+// Restore text selection after DOM changes using markers
+const restoreTextSelection = (editorElement: HTMLElement, selectionState: TextSelectionState): void => {
+  if (!selectionState.hasSelection) return;
+
+  const findMarker = (id?: string): HTMLElement | null => {
+    if (!id) return null;
+    return editorElement.querySelector(`[data-marker-id="${id}"]`) as HTMLElement | null;
+  };
+
+  const startMarker = findMarker(selectionState.startMarkerId);
+  const endMarker = selectionState.isCollapsed ? startMarker : findMarker(selectionState.endMarkerId);
+
+  try {
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    const range = document.createRange();
+
+    if (startMarker && (!selectionState.isCollapsed ? endMarker : true)) {
+      // Build range using markers
+      range.setStartBefore(startMarker);
+      if (selectionState.isCollapsed) {
+        range.collapse(true);
+      } else if (endMarker) {
+        range.setEndBefore(endMarker);
       }
-    } catch (e) {
-      // Silently handle selection restoration failures
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      // Clean up markers after applying selection
+      if (endMarker && endMarker.parentNode) endMarker.parentNode.removeChild(endMarker);
+      if (startMarker && startMarker !== endMarker && startMarker.parentNode) {
+        startMarker.parentNode.removeChild(startMarker);
+      }
+      return;
+    }
+
+    // Fallback: markers not found, attempt to use recorded paths
+    if (selectionState.startPath) {
+      const startNode = resolveNodeByPath(editorElement, selectionState.startPath);
+      if (startNode) {
+        try {
+          if (startNode.nodeType === Node.TEXT_NODE) {
+            range.setStart(startNode, 0);
+          } else {
+            range.setStart(startNode, 0);
+          }
+        } catch (err) {
+          if (import.meta.env.DEV) console.warn('restoreTextSelection: setStart fallback failed');
+        }
+      }
+    }
+    if (!selectionState.isCollapsed && selectionState.endPath) {
+      const endNode = resolveNodeByPath(editorElement, selectionState.endPath);
+      if (endNode) {
+        try {
+          if (endNode.nodeType === Node.TEXT_NODE) {
+            range.setEnd(endNode, (endNode.textContent || '').length);
+          } else {
+            range.setEnd(endNode, endNode.childNodes.length);
+          }
+        } catch (err) {
+          if (import.meta.env.DEV) console.warn('restoreTextSelection: setEnd fallback failed');
+        }
+      }
+    } else {
+      range.collapse(true);
+    }
+
+    // Only apply if range is valid
+    selection.removeAllRanges();
+    selection.addRange(range);
+  } catch (e) {
+    console.error('restoreTextSelection: failed to re-apply selection', e);
+  } finally {
+    // Best-effort marker cleanup if any remain
+    try {
+      const leftover = editorElement.querySelectorAll('[data-selection-marker="true"]');
+      leftover.forEach(el => el.parentNode && el.parentNode.removeChild(el));
+    } catch (err) {
+      if (import.meta.env.DEV) console.warn('restoreTextSelection: leftover cleanup failed');
     }
   }
 };
@@ -245,52 +331,172 @@ const preserveSelectionDuringListOperation = (
   // Perform the operation
   operation();
   
-  // Restore selection after a brief delay to allow DOM to settle
-  // Use requestAnimationFrame to ensure DOM changes are complete
-  requestAnimationFrame(() => {
+  // Restore selection based on DOM stability rather than a fixed delay.
+  // Use a MutationObserver to detect when changes settle, with a fallback timeout.
+  try {
+    let settled = false;
+    const NO_MUTATION_WINDOW_MS = 60; // consider DOM stable after this quiet period
+    const FALLBACK_TIMEOUT_MS = 400;  // hard cap in case no events arrive
+    let quietTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const finalize = () => {
+      if (settled) return;
+      settled = true;
+      if (quietTimer) {
+        clearTimeout(quietTimer);
+        quietTimer = null;
+      }
+      try {
+        restoreTextSelection(editorElement, selectionState);
+      } catch (err) {
+        console.error('preserveSelectionDuringListOperation: restore failed', err);
+      }
+    };
+
+    // Fallback timer to ensure we attempt restore even without mutations
+    const fallbackTimer = setTimeout(finalize, FALLBACK_TIMEOUT_MS);
+
+    // If MutationObserver is unavailable, fall back immediately to timeout path
+    if (typeof MutationObserver === 'undefined') {
+      return; // fallbackTimer will trigger finalize
+    }
+
+    const observer = new MutationObserver(() => {
+      if (settled) return;
+      if (quietTimer) clearTimeout(quietTimer);
+      quietTimer = setTimeout(() => {
+        observer.disconnect();
+        clearTimeout(fallbackTimer);
+        finalize();
+      }, NO_MUTATION_WINDOW_MS);
+    });
+
+    // Start observing for any structural or text changes within the editor
+    observer.observe(editorElement, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+
+    // Also schedule a near-term check in case operation made synchronous changes only
+    // without triggering mutations (rare but possible depending on the operation)
+    if (!quietTimer) {
+      quietTimer = setTimeout(() => {
+        observer.disconnect();
+        clearTimeout(fallbackTimer);
+        finalize();
+      }, NO_MUTATION_WINDOW_MS);
+    }
+  } catch (err) {
+    console.error('preserveSelectionDuringListOperation: observer setup failed', err);
+    // Last-resort fallback: attempt restore after a modest delay
     setTimeout(() => {
-      restoreTextSelection(editorElement, selectionState);
-    }, 5);
-  });
+      try {
+        restoreTextSelection(editorElement, selectionState);
+      } catch (e) {
+        console.error('preserveSelectionDuringListOperation: restore failed (fallback)', e);
+      }
+    }, 300);
+  }
+};
+
+// Complete CSS named colors map (147 names)
+const CSS_NAMED_COLORS: { [key: string]: string } = {
+  aliceblue: '#f0f8ff', antiquewhite: '#faebd7', aqua: '#00ffff', aquamarine: '#7fffd4', azure: '#f0ffff',
+  beige: '#f5f5dc', bisque: '#ffe4c4', black: '#000000', blanchedalmond: '#ffebcd', blue: '#0000ff',
+  blueviolet: '#8a2be2', brown: '#a52a2a', burlywood: '#deb887', cadetblue: '#5f9ea0', chartreuse: '#7fff00',
+  chocolate: '#d2691e', coral: '#ff7f50', cornflowerblue: '#6495ed', cornsilk: '#fff8dc', crimson: '#dc143c',
+  cyan: '#00ffff', darkblue: '#00008b', darkcyan: '#008b8b', darkgoldenrod: '#b8860b', darkgray: '#a9a9a9',
+  darkgreen: '#006400', darkgrey: '#a9a9a9', darkkhaki: '#bdb76b', darkmagenta: '#8b008b', darkolivegreen: '#556b2f',
+  darkorange: '#ff8c00', darkorchid: '#9932cc', darkred: '#8b0000', darksalmon: '#e9967a', darkseagreen: '#8fbc8f',
+  darkslateblue: '#483d8b', darkslategray: '#2f4f4f', darkslategrey: '#2f4f4f', darkturquoise: '#00ced1', darkviolet: '#9400d3',
+  deeppink: '#ff1493', deepskyblue: '#00bfff', dimgray: '#696969', dimgrey: '#696969', dodgerblue: '#1e90ff',
+  firebrick: '#b22222', floralwhite: '#fffaf0', forestgreen: '#228b22', fuchsia: '#ff00ff', gainsboro: '#dcdcdc',
+  ghostwhite: '#f8f8ff', gold: '#ffd700', goldenrod: '#daa520', gray: '#808080', green: '#008000',
+  greenyellow: '#adff2f', grey: '#808080', honeydew: '#f0fff0', hotpink: '#ff69b4', indianred: '#cd5c5c',
+  indigo: '#4b0082', ivory: '#fffff0', khaki: '#f0e68c', lavender: '#e6e6fa', lavenderblush: '#fff0f5',
+  lawngreen: '#7cfc00', lemonchiffon: '#fffacd', lightblue: '#add8e6', lightcoral: '#f08080', lightcyan: '#e0ffff',
+  lightgoldenrodyellow: '#fafad2', lightgray: '#d3d3d3', lightgreen: '#90ee90', lightgrey: '#d3d3d3', lightpink: '#ffb6c1',
+  lightsalmon: '#ffa07a', lightseagreen: '#20b2aa', lightskyblue: '#87cefa', lightslategray: '#778899', lightslategrey: '#778899',
+  lightsteelblue: '#b0c4de', lightyellow: '#ffffe0', lime: '#00ff00', limegreen: '#32cd32', linen: '#faf0e6',
+  magenta: '#ff00ff', maroon: '#800000', mediumaquamarine: '#66cdaa', mediumblue: '#0000cd', mediumorchid: '#ba55d3',
+  mediumpurple: '#9370db', mediumseagreen: '#3cb371', mediumslateblue: '#7b68ee', mediumspringgreen: '#00fa9a', mediumturquoise: '#48d1cc',
+  mediumvioletred: '#c71585', midnightblue: '#191970', mintcream: '#f5fffa', mistyrose: '#ffe4e1', moccasin: '#ffe4b5',
+  navajowhite: '#ffdead', navy: '#000080', oldlace: '#fdf5e6', olive: '#808000', olivedrab: '#6b8e23',
+  orange: '#ffa500', orangered: '#ff4500', orchid: '#da70d6', palegoldenrod: '#eee8aa', palegreen: '#98fb98',
+  paleturquoise: '#afeeee', palevioletred: '#db7093', papayawhip: '#ffefd5', peachpuff: '#ffdab9', peru: '#cd853f',
+  pink: '#ffc0cb', plum: '#dda0dd', powderblue: '#b0e0e6', purple: '#800080', rebeccapurple: '#663399',
+  red: '#ff0000', rosybrown: '#bc8f8f', royalblue: '#4169e1', saddlebrown: '#8b4513', salmon: '#fa8072',
+  sandybrown: '#f4a460', seagreen: '#2e8b57', seashell: '#fff5ee', sienna: '#a0522d', silver: '#c0c0c0',
+  skyblue: '#87ceeb', slateblue: '#6a5acd', slategray: '#708090', slategrey: '#708090', snow: '#fffafa',
+  springgreen: '#00ff7f', steelblue: '#4682b4', tan: '#d2b48c', teal: '#008080', thistle: '#d8bfd8',
+  tomato: '#ff6347', turquoise: '#40e0d0', violet: '#ee82ee', wheat: '#f5deb3', white: '#ffffff',
+  whitesmoke: '#f5f5f5', yellow: '#ffff00', yellowgreen: '#9acd32'
 };
 
 // Helper function to normalize color to hex
-const normalizeColorToHex = (colorValue: string): string => {
-  if (!colorValue) return '#000000';
+const normalizeColorToHex = (colorValue: string): string | undefined => {
+  if (!colorValue) return undefined;
+  const value = colorValue.trim();
   
   // Handle hex format
-  if (colorValue.startsWith('#')) {
+  if (value.startsWith('#')) {
     // Normalize 3-digit hex to 6-digit
-    if (colorValue.length === 4) {
-      return `#${colorValue[1]}${colorValue[1]}${colorValue[2]}${colorValue[2]}${colorValue[3]}${colorValue[3]}`.toLowerCase();
+    if (value.length === 4) {
+      return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase();
     }
-    return colorValue.toLowerCase();
+    // Return original for 6, 8 (alpha) or 4 (rgba shorthand) length
+    if (value.length === 7 || value.length === 9 || value.length === 5) {
+      return value.toLowerCase();
+    }
+    return undefined;
   }
   
   // Handle RGB/RGBA format
-  if (colorValue.startsWith('rgb')) {
-    const rgbMatch = colorValue.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+  if (value.toLowerCase().startsWith('rgb')) {
+    const rgbMatch = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/i);
     if (rgbMatch) {
       const r = parseInt(rgbMatch[1], 10);
       const g = parseInt(rgbMatch[2], 10);
       const b = parseInt(rgbMatch[3], 10);
-      const toHex = (c: number) => c.toString(16).padStart(2, '0');
+      const toHex = (c: number) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0');
       return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toLowerCase();
     }
   }
 
-  // Handle basic color names
-  const colorMap: { [key: string]: string } = {
-    black: '#000000', white: '#ffffff', red: '#ff0000', green: '#008000', blue: '#0000ff', 
-    yellow: '#ffff00', cyan: '#00ffff', magenta: '#ff00ff', gray: '#808080', 
-  };
-  const lowerCaseColor = colorValue.toLowerCase();
-  if (colorMap[lowerCaseColor]) {
-    return colorMap[lowerCaseColor];
+  // Handle HSL/HSLA format
+  if (value.toLowerCase().startsWith('hsl')) {
+    const hslMatch = value.match(/hsla?\(([-\d.]+),\s*([\d.]+)%\s*,\s*([\d.]+)%(?:,\s*[\d.]+)?\)/i);
+    if (hslMatch) {
+      const h = ((parseFloat(hslMatch[1]) % 360) + 360) % 360; // wrap
+      const s = Math.max(0, Math.min(100, parseFloat(hslMatch[2]))) / 100;
+      const l = Math.max(0, Math.min(100, parseFloat(hslMatch[3]))) / 100;
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+      const m = l - c / 2;
+      let r1 = 0, g1 = 0, b1 = 0;
+      if (h < 60) { r1 = c; g1 = x; b1 = 0; }
+      else if (h < 120) { r1 = x; g1 = c; b1 = 0; }
+      else if (h < 180) { r1 = 0; g1 = c; b1 = x; }
+      else if (h < 240) { r1 = 0; g1 = x; b1 = c; }
+      else if (h < 300) { r1 = x; g1 = 0; b1 = c; }
+      else { r1 = c; g1 = 0; b1 = x; }
+      const r = Math.round((r1 + m) * 255);
+      const g = Math.round((g1 + m) * 255);
+      const b = Math.round((b1 + m) * 255);
+      const toHex = (n: number) => n.toString(16).padStart(2, '0');
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toLowerCase();
+    }
   }
 
-  // Default to black if conversion fails
-  return '#000000';
+  // Handle full CSS named colors
+  const lower = value.toLowerCase();
+  if (CSS_NAMED_COLORS[lower]) {
+    return CSS_NAMED_COLORS[lower];
+  }
+
+  // Parsing failed
+  return undefined;
 };
 
 const EditorToolbar = ({ 
@@ -314,6 +520,58 @@ const EditorToolbar = ({
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
+
+  // Debounce timer for underline color synchronization
+  const underlineSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Check whether current selection contains underline formatting
+  const selectionHasUnderline = (): boolean => {
+    if (!editorRef.current) return false;
+    try {
+      // Fast path via execCommand state if available
+      const doc = document as unknown as { queryCommandState?: (cmd: string) => boolean };
+      if (typeof doc.queryCommandState === 'function' && getLegacyCommandState('underline')) {
+        return true;
+      }
+    } catch (_) {
+      // Some browsers may throw; fall back to DOM inspection
+    }
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return isUnderline;
+
+    const range = selection.getRangeAt(0);
+    const editorEl = editorRef.current;
+
+    const walker = document.createTreeWalker(
+      editorEl,
+      NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode: (node) => {
+          if (!(node instanceof HTMLElement)) return NodeFilter.FILTER_SKIP;
+          const el = node as HTMLElement;
+          const inlineStyle = el.style?.textDecoration || '';
+          const computed = window.getComputedStyle(el);
+          const hasUnderline = el.tagName === 'U' || inlineStyle.includes('underline') || (computed.textDecorationLine || '').includes('underline');
+          if (!hasUnderline) return NodeFilter.FILTER_SKIP;
+          return range.intersectsNode(el) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
+      }
+    );
+
+    return Boolean(walker.nextNode());
+  };
+
+  // Debounced scheduler for synchronizeUnderlineColor
+  const scheduleSynchronizeUnderlineColor = (color: string) => {
+    if (underlineSyncTimeoutRef.current) {
+      clearTimeout(underlineSyncTimeoutRef.current);
+    }
+    underlineSyncTimeoutRef.current = setTimeout(() => {
+      synchronizeUnderlineColor(color);
+      underlineSyncTimeoutRef.current = null;
+    }, 120);
+  };
   
   // Track color history - maximum 6 recent colors
   const [recentColors, setRecentColors] = useState<string[]>([]);
@@ -367,6 +625,7 @@ const EditorToolbar = ({
   // Add new useEffect for focus handling
   useEffect(() => {
     if (!editorRef.current) return;
+    const editorEl = editorRef.current;
 
     // Remove the aggressive focus handling
     // We'll rely on more intentional focus management instead
@@ -383,96 +642,85 @@ const EditorToolbar = ({
     }
   }, [onFormatCommandReady]);
   
-  // Function to check if a list item is fully selected
-  const isListItemFullySelected = (selection: Selection): HTMLElement | null => {
-    if (!selection || !selection.rangeCount) {
-      return null;
-    }
-    
-    const range = selection.getRangeAt(0);
-    
-    // Find the list item parent
-    let node = range.commonAncestorContainer;
-    let listItem: HTMLElement | null = null;
-    
-    // Walk up the DOM tree to find if we're in a list item
-    while (node && node !== editorRef.current) {
+  // List item selection helpers (extracted for readability and testability)
+  const findContainingListItem = (range: Range, editorRoot: HTMLElement | null): HTMLElement | null => {
+    let node: Node | null = range.commonAncestorContainer;
+    while (node && node !== editorRoot) {
       if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === 'LI') {
-        listItem = node as HTMLElement;
-        break;
+        return node as HTMLElement;
       }
       node = node.parentNode;
     }
-    
-    // If not in a list item, return null
-    if (!listItem) {
-      return null;
-    }
-    
-    // Case 1: Selection starts and ends outside the list item but encompasses it
-    if (range.startContainer !== listItem && 
-        range.endContainer !== listItem && 
-        range.intersectsNode(listItem)) {
-      
-      // Check if the selection contains the entire list item
+    return null;
+  };
+
+  const checkExternalEncompassment = (range: Range, listItem: HTMLElement): HTMLElement | null => {
+    if (range.startContainer !== listItem && range.endContainer !== listItem && range.intersectsNode(listItem)) {
       const listItemRange = document.createRange();
       listItemRange.selectNodeContents(listItem);
-      
-      // If the selection contains the entire list item's content
       const startsBeforeOrAt = range.compareBoundaryPoints(Range.START_TO_START, listItemRange) <= 0;
       const endsAfterOrAt = range.compareBoundaryPoints(Range.END_TO_END, listItemRange) >= 0;
-      
       if (startsBeforeOrAt && endsAfterOrAt) {
         return listItem;
       }
     }
-    
-    // Case 2: Selection starts and ends inside the list item
-    // Check if the selection covers all the content
-    
-    // Create a range for the entire list item content
-    const listItemContentRange = document.createRange();
-    listItemContentRange.selectNodeContents(listItem);
-    
-    // Check if the selection range covers the entire content
-    const selectionStartsAtBeginning = 
+    return null;
+  };
+
+  const checkInternalFullCoverage = (range: Range, listItem: HTMLElement): HTMLElement | null => {
+    const selectionStartsAtBeginning =
       (range.startContainer === listItem && range.startOffset === 0) ||
       (range.startContainer === listItem.firstChild && range.startOffset === 0);
-    
     const selectionEndsAtEnd =
       (range.endContainer === listItem && range.endOffset === listItem.childNodes.length) ||
-      (range.endContainer === listItem.lastChild && 
-       range.endOffset === (range.endContainer.nodeType === Node.TEXT_NODE ? 
-                           range.endContainer.textContent?.length || 0 : 
-                           (range.endContainer as HTMLElement).childNodes.length));
-
+      (range.endContainer === listItem.lastChild &&
+        range.endOffset === (range.endContainer.nodeType === Node.TEXT_NODE
+          ? range.endContainer.textContent?.length || 0
+          : (range.endContainer as HTMLElement).childNodes.length));
     if (selectionStartsAtBeginning && selectionEndsAtEnd) {
       return listItem;
     }
-    
-    // Case 3: If the list item only has one text node child and it's fully selected
-    if (listItem.childNodes.length === 1 && 
-        listItem.firstChild?.nodeType === Node.TEXT_NODE && 
-        range.startContainer === listItem.firstChild && 
-        range.endContainer === listItem.firstChild) {
-      const textNode = listItem.firstChild;
-      const fullTextSelected = range.startOffset === 0 && range.endOffset === textNode.textContent?.length;
-      
+    return null;
+  };
+
+  const checkSingleTextNodeSelection = (range: Range, listItem: HTMLElement): HTMLElement | null => {
+    if (
+      listItem.childNodes.length === 1 &&
+      listItem.firstChild?.nodeType === Node.TEXT_NODE &&
+      range.startContainer === listItem.firstChild &&
+      range.endContainer === listItem.firstChild
+    ) {
+      const textNode = listItem.firstChild as ChildNode;
+      const fullTextSelected = range.startOffset === 0 && range.endOffset === (textNode.textContent?.length || 0);
       if (fullTextSelected) {
         return listItem;
       }
     }
-    
-    // Case 4: Compare text content as a fallback
-    // This is less reliable but can catch additional cases
+    return null;
+  };
+
+  const checkTextContentMatch = (range: Range, listItem: HTMLElement): HTMLElement | null => {
     const listItemText = listItem.textContent || '';
     const selectedText = range.toString();
-    
     if (selectedText.trim() === listItemText.trim() && selectedText.length > 0) {
       return listItem;
     }
-    
     return null;
+  };
+
+  // Function to check if a list item is fully selected
+  const isListItemFullySelected = (selection: Selection): HTMLElement | null => {
+    if (!selection || !selection.rangeCount) return null;
+    const range = selection.getRangeAt(0);
+    const listItem = findContainingListItem(range, editorRef.current);
+    if (!listItem) return null;
+    return (
+      checkExternalEncompassment(range, listItem) ||
+      checkInternalFullCoverage(range, listItem) ||
+      checkSingleTextNodeSelection(range, listItem) ||
+      checkTextContentMatch(range, listItem) ||
+      null
+    );
   };
   
   // Modify execFormatCommand to only focus when necessary for text operations
@@ -572,7 +820,7 @@ const EditorToolbar = ({
         );
         
         // Also check if the selection itself has formatting applied
-        const queryCommandState = document.queryCommandState(command);
+        const queryCommandState = getLegacyCommandState(command);
         
         hasAnyContentFormatting = foundFormatTags || queryCommandState;
         
@@ -588,9 +836,9 @@ const EditorToolbar = ({
           );
           
           let hasUnformattedText = false;
-          let textNode;
-          const textNodeDetails = [];
-          while (textNode = walker.nextNode()) {
+          let textNode: Node | null;
+          const textNodeDetails: Array<{ text: string | null; isFormatted: boolean; parentNodeName?: string; hasContent?: boolean }> = [];
+          while ((textNode = walker.nextNode())) {
             // Check if this text node is inside a formatting tag
             let parent = textNode.parentNode;
             let isFormatted = false;
@@ -639,27 +887,26 @@ const EditorToolbar = ({
           }
         }
         
-        // Determine desired state:
-        // Default rule:
-        //   If marker is formatted AND all content fully formatted ⇒ remove formatting
-        //   else ⇒ add formatting
-        desiredFormattingState = !(hasMarkerFormatting && hasFullContentFormatting);
-        
-        // Special rule: cursor at beginning WITHOUT any selection (range.collapsed)
-        // means user is explicitly toggling the marker only. In that case
-        // we simply invert the marker formatting state, independent of the
-        // content formatting.
-        if (range.collapsed && ((range.startContainer === listItem && range.startOffset === 0) || (range.startContainer === listItem.firstChild && range.startOffset === 0))) {
-          desiredFormattingState = !hasMarkerFormatting;
-          hasFullContentFormatting = false; // ensure we don't attempt to sync content here
-        }
-        
-        // Fallback check: if marker is formatted and queryCommandState is true for full selection,
-        // assume we should remove formatting even if hasFullContentFormatting is false
+        // Determine desired state using a clear linear decision sequence
+        // 1) compute all booleans first (done above)
+        // 2) set default rule, 3) apply cursor-at-beginning override, 4) final override independent of desired state
         const isFullListItemSelection = isListItemFullySelected(selection) !== null;
-        if (hasMarkerFormatting && isFullListItemSelection && queryCommandState && desiredFormattingState) {
-          desiredFormattingState = false; // Override to remove formatting
-        }
+        const isCursorAtBeginningWithoutSelection = range.collapsed && ((
+          (range.startContainer === listItem && range.startOffset === 0) ||
+          (range.startContainer === listItem.firstChild && range.startOffset === 0)
+        ));
+
+        // Use pure helper to compute decision with linear rules
+        const decision = computeDesiredFormattingState({
+          hasMarkerFormatting,
+          hasAnyContentFormatting,
+          hasFullContentFormatting,
+          queryCommandState,
+          isFullListItemSelection,
+          isCursorAtBeginningWithoutSelection
+        });
+        desiredFormattingState = decision.desiredFormattingState;
+        hasFullContentFormatting = decision.hasFullContentFormatting;
         
         // Debug the decision values
 
@@ -691,12 +938,12 @@ const EditorToolbar = ({
             if (['bold', 'italic', 'underline'].includes(command)) {
               // First, remove all existing formatting of this type
               let attempts = 0;
-              while (document.queryCommandState(command) && attempts < 5) {
-                document.execCommand(command, false);
+              while (getLegacyCommandState(command) && attempts < 5) {
+                execLegacyCommand(command);
                 attempts++;
               }
               // Then apply formatting to ensure everything is formatted
-              document.execCommand(command, false);
+              execLegacyCommand(command);
               
               // Update format states
               updateFormatStates();
@@ -809,32 +1056,40 @@ const EditorToolbar = ({
     }
 
     // Execute command for the content (this will handle both marker and content when entire item is selected)
-    const commandResult = document.execCommand(command, false, value);
+    const commandResult = execLegacyCommand(command, value);
     
     if (!commandResult) {
       // Debug: Check if the browser supports this command
-      const isSupported = document.queryCommandSupported(command);
-      const isEnabled = document.queryCommandEnabled(command);
+      const isSupported = isLegacyCommandSupported(command);
+      const isEnabled = isLegacyCommandEnabled(command);
     }
 
     // Update states
     switch (command) {
-      case 'bold':
-        const boldState = document.queryCommandState(command);
+      case 'bold': {
+        const boldState = getLegacyCommandState(command);
         setIsBold(boldState);
         break;
-      case 'italic':
-        const italicState = document.queryCommandState(command);
+      }
+      case 'italic': {
+        const italicState = getLegacyCommandState(command);
         setIsItalic(italicState);
         break;
-      case 'underline':
-        const underlineState = document.queryCommandState(command);
+      }
+      case 'underline': {
+        const underlineState = getLegacyCommandState(command);
         setIsUnderline(underlineState);
         break;
+      }
       case 'foreColor':
         updateTextColor(value || '#000000');
-        // NEW: ensure underline color follows text color
-        synchronizeUnderlineColor(value || '#000000');
+        // Ensure underline color follows text color only when underline is active/present
+        {
+          const nextColor = value || '#000000';
+          if (selectionHasUnderline()) {
+            scheduleSynchronizeUnderlineColor(nextColor);
+          }
+        }
         break;
       case 'hiliteColor':
         updateHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
@@ -850,6 +1105,16 @@ const EditorToolbar = ({
       editorRef.current.dispatchEvent(event);
     }
   };
+
+  // Cleanup any pending debounced tasks on unmount
+  useEffect(() => {
+    return () => {
+      if (underlineSyncTimeoutRef.current) {
+        clearTimeout(underlineSyncTimeoutRef.current);
+        underlineSyncTimeoutRef.current = null;
+      }
+    };
+  }, []);
   
   // Function to check if selection is in a specific list type
   const isInListType = (listType: string): boolean => {
@@ -1048,12 +1313,14 @@ const EditorToolbar = ({
     while (currentNode && currentNode !== editorRef.current) {
       // Check inline style first (highest priority)
       if (currentNode.style && currentNode.style.color) {
-        return normalizeColorToHex(currentNode.style.color);
+        const parsed = normalizeColorToHex(currentNode.style.color);
+        if (parsed) return parsed;
       }
       
       // Check for font elements with color attribute
       if (currentNode.tagName === 'FONT' && currentNode.getAttribute('color')) {
-        return normalizeColorToHex(currentNode.getAttribute('color') || '');
+        const parsedAttr = normalizeColorToHex(currentNode.getAttribute('color') || '');
+        if (parsedAttr) return parsedAttr;
       }
       
       // Move up to parent
@@ -1066,7 +1333,8 @@ const EditorToolbar = ({
     if (node instanceof HTMLElement) {
       const computedColor = window.getComputedStyle(node).color;
       if (computedColor && computedColor !== 'rgb(0, 0, 0)') {
-        return normalizeColorToHex(computedColor);
+        const parsedComputed = normalizeColorToHex(computedColor);
+        if (parsedComputed) return parsedComputed;
       }
     }
     
@@ -1099,7 +1367,8 @@ const EditorToolbar = ({
       if (currentNode.style && currentNode.style.backgroundColor && 
           currentNode.style.backgroundColor !== 'transparent' && 
           currentNode.style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
-        return normalizeColorToHex(currentNode.style.backgroundColor);
+        const parsedBg = normalizeColorToHex(currentNode.style.backgroundColor);
+        if (parsedBg) return parsedBg;
       }
       
       // Move up to parent
@@ -1117,7 +1386,8 @@ const EditorToolbar = ({
         // Make sure it's not the default background of the editor or its parent elements
         const editorBgColor = window.getComputedStyle(editorRef.current).backgroundColor;
         if (computedBgColor !== editorBgColor) {
-          return normalizeColorToHex(computedBgColor);
+          const parsedComputedBg = normalizeColorToHex(computedBgColor);
+          if (parsedComputedBg) return parsedComputedBg;
         }
       }
     }
@@ -1139,9 +1409,9 @@ const EditorToolbar = ({
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       // Check formatting states using document.queryCommandState
-      const boldState = document.queryCommandState('bold');
-      const italicState = document.queryCommandState('italic');
-      const underlineState = document.queryCommandState('underline');
+      const boldState = getLegacyCommandState('bold');
+      const italicState = getLegacyCommandState('italic');
+      const underlineState = getLegacyCommandState('underline');
       
       setIsBold(boldState);
       setIsItalic(italicState);
@@ -1197,7 +1467,8 @@ const EditorToolbar = ({
             const listMarkerColor = listItemElement.style.getPropertyValue('--marker-color');
             
             if (listMarkerColor) {
-              updateTextColor(normalizeColorToHex(listMarkerColor));
+              const parsedMarker = normalizeColorToHex(listMarkerColor);
+              if (parsedMarker) updateTextColor(parsedMarker);
             }
           }
         }
@@ -1293,7 +1564,7 @@ const EditorToolbar = ({
   // Track selection changes to update format states
   useEffect(() => {
     if (!editorRef.current) return;
-    
+    const editorEl = editorRef.current;
     const handleSelectionChange = () => {
       // Only update format states if the editor has focus
       if (editorHasFocusRef.current) {
@@ -1326,7 +1597,7 @@ const EditorToolbar = ({
       }, 10);
     };
     
-    editorRef.current.addEventListener('mouseup', handleEditorMouseUp);
+    editorEl.addEventListener('mouseup', handleEditorMouseUp);
     
     // Add focus/blur event listeners to track when editor loses/gains focus
     const handleEditorFocus = () => {
@@ -1339,8 +1610,8 @@ const EditorToolbar = ({
       // Don't update the format states on blur to keep the current toolbar state
     };
     
-    editorRef.current.addEventListener('focus', handleEditorFocus);
-    editorRef.current.addEventListener('blur', handleEditorBlur);
+    editorEl.addEventListener('focus', handleEditorFocus);
+    editorEl.addEventListener('blur', handleEditorBlur);
     
     // When the document is modified (e.g., via undo/redo), ensure the toolbar reflects the new state
     const handleEditorInput = () => {
@@ -1357,19 +1628,19 @@ const EditorToolbar = ({
       }
     };
     
-    editorRef.current.addEventListener('input', handleEditorInput);
-    document.addEventListener('keydown', handleKeyDown);
+    editorEl.addEventListener('input', handleEditorInput);
+    editorEl.addEventListener('keydown', handleKeyDown);
     
     // Clean up
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
-      document.removeEventListener('keydown', handleKeyDown);
-      editorRef.current?.removeEventListener('mouseup', handleEditorMouseUp);
-      editorRef.current?.removeEventListener('focus', handleEditorFocus);
-      editorRef.current?.removeEventListener('blur', handleEditorBlur);
-      editorRef.current?.removeEventListener('input', handleEditorInput);
+      editorEl.removeEventListener('keydown', handleKeyDown);
+      editorEl.removeEventListener('mouseup', handleEditorMouseUp);
+      editorEl.removeEventListener('focus', handleEditorFocus);
+      editorEl.removeEventListener('blur', handleEditorBlur);
+      editorEl.removeEventListener('input', handleEditorInput);
     };
-  }, [editorRef]);
+  }, [editorRef.current]);
   
   // Apply text color
   const applyTextColor = (color: string) => {
@@ -1395,7 +1666,7 @@ const EditorToolbar = ({
     updateHighlightColor(color);
     
     // Use standard execCommand instead of enhanced version (no marker formatting for highlighting)
-    document.execCommand('hiliteColor', false, color);
+    execLegacyCommand('hiliteColor', color);
     
     // Update format states
     updateFormatStates();
@@ -1527,11 +1798,20 @@ const EditorToolbar = ({
           }
         });
         
-        // Force a redraw to make the change take effect immediately
-        const originalDisplay = listElement.style.display;
-        listElement.style.display = 'none';
-        listElement.offsetHeight; // Force reflow
-        listElement.style.display = originalDisplay;
+        // Schedule a non-blocking visual update to avoid synchronous reflow
+        const listEl = listElement as HTMLElement;
+        const originalWillChange = listEl.style.willChange;
+        // Hint to the browser that the element is about to change so it can optimize
+        listEl.style.willChange = 'contents';
+        // Use rAF to let the browser batch style and layout work
+        requestAnimationFrame(() => {
+          // If a measurement is needed, do it in this read phase
+          // e.g., void listEl.getBoundingClientRect();
+          requestAnimationFrame(() => {
+            // Restore original will-change to clean up
+            listEl.style.willChange = originalWillChange;
+          });
+        });
       }
       
       // Update content
@@ -1643,7 +1923,6 @@ const EditorToolbar = ({
   // Helper function to preserve list item data
   const preserveListItemData = (listItems: HTMLElement[]): ListItemData[] => {
     return listItems.map(item => ({
-      html: item.innerHTML,
       textContent: item.textContent || '',
       indentLevel: item.style.getPropertyValue('--indent-level'),
       paddingLeft: item.style.paddingLeft,
@@ -1744,8 +2023,6 @@ const EditorToolbar = ({
       if (index < itemData.length) {
         const originalData = itemData[index];
         
-        // item.innerHTML = originalData.html;
-        
         let indentLevelSuccessfullySet = false;
 
         // Try to use originalData.indentLevel
@@ -1781,6 +2058,8 @@ const EditorToolbar = ({
 
   // Helper function to restore marker formatting
   const restoreMarkerFormatting = (items: HTMLElement[], itemData: ListItemData[], listType: 'UL' | 'OL') => {
+    // Skip UL: marker formatting only applies to ordered lists.
+    // Bullets are rendered via CSS list-style and cannot carry per-item inline marker styles.
     if (listType !== 'OL') return;
     
     items.forEach((item, index) => {
@@ -1807,55 +2086,68 @@ const EditorToolbar = ({
 
   // Helper function to manage transitions during operations
   const disableTransitionsDuring = (callback: () => void) => {
-    const originalEditorTransition = editorRef.current?.style.transition;
-    
-    // Create a temporary style element to aggressively disable all transitions
-    const tempStyle = document.createElement('style');
-    tempStyle.id = 'temp-disable-transitions';
-    tempStyle.textContent = `
-      .rich-text-editor ol li,
-      .rich-text-editor ul li {
-        transition: none !important;
-      }
-      .rich-text-editor ol li *,
-      .rich-text-editor ul li * {
-        transition: none !important;
-      }
-    `;
-    document.head.appendChild(tempStyle);
-    
-    // Store and disable transitions on the editor
-    if (editorRef.current) {
-      editorRef.current.style.transition = 'none';
+    const editorEl = editorRef.current;
+    const originalEditorTransition = editorEl?.style.transition;
+
+    // Ensure a unique editor id is present on the editor element
+    let editorId = editorEl?.dataset?.editorId as string | undefined;
+    if (editorEl && !editorId) {
+      editorId = `rte-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      editorEl.dataset.editorId = editorId;
     }
-    
-    // Store and disable transitions on all current list items
-    const allListItems = editorRef.current?.querySelectorAll('li') || [];
+
+    // Create a temporary style element to disable transitions scoped to this editor only
+    let tempStyle: HTMLStyleElement | null = null;
+    if (editorId) {
+      tempStyle = document.createElement('style');
+      tempStyle.id = `temp-disable-transitions-${editorId}`;
+      tempStyle.textContent = `
+        [data-editor-id="${editorId}"] ol li,
+        [data-editor-id="${editorId}"] ul li {
+          transition: none !important;
+        }
+        [data-editor-id="${editorId}"] ol li *,
+        [data-editor-id="${editorId}"] ul li * {
+          transition: none !important;
+        }
+      `;
+      document.head.appendChild(tempStyle);
+    }
+
+    // Store and disable transitions on the editor
+    if (editorEl) {
+      editorEl.style.transition = 'none';
+    }
+
+    // Store and disable transitions on all current list items within this editor
+    const allListItems = editorEl?.querySelectorAll('li') || [];
     const originalTransitions: string[] = [];
     allListItems.forEach((item, index) => {
       const htmlItem = item as HTMLElement;
       originalTransitions[index] = htmlItem.style.transition;
       htmlItem.style.transition = 'none !important';
     });
-    
+
     callback();
-    
+
     // Re-enable transitions after operation with a delay to ensure DOM changes are complete
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        // Remove the temporary style element
-        const styleElement = document.getElementById('temp-disable-transitions');
-        if (styleElement) {
-          styleElement.remove();
+        // Remove the temporary style element for this editor only
+        if (editorId) {
+          const styleElement = document.getElementById(`temp-disable-transitions-${editorId}`);
+          if (styleElement) {
+            styleElement.remove();
+          }
         }
-        
+
         // Restore editor transition
-        if (editorRef.current) {
-          editorRef.current.style.transition = originalEditorTransition || '';
+        if (editorEl) {
+          editorEl.style.transition = originalEditorTransition || '';
         }
-        
+
         // Restore list item transitions, but need to find them again since they may have changed
-        const newListItems = editorRef.current?.querySelectorAll('li') || [];
+        const newListItems = editorEl?.querySelectorAll('li') || [];
         newListItems.forEach((item, index) => {
           const htmlItem = item as HTMLElement;
           // Only restore if we have a stored transition for this index
@@ -2051,7 +2343,7 @@ const EditorToolbar = ({
     // This operation needs to be undo-friendly. Using execCommand is the simplest way.
     // Math fields will be handled by the browser's default behavior for wrapping content.
     // The complexity of preserving/restoring them manually is high and brittle.
-    document.execCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList', false);
+    execLegacyCommand(listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList');
 
     // Post-command adjustments are still needed for styling and indentation.
     // Find the new list
@@ -2060,7 +2352,7 @@ const EditorToolbar = ({
     let firstItem: HTMLLIElement | null = null;
     
     if (newSelection && newSelection.rangeCount > 0) {
-      let listNodeAnchor = newSelection.anchorNode;
+      const listNodeAnchor = newSelection.anchorNode;
       let tempNode = listNodeAnchor;
       while (tempNode && tempNode !== editorRef.current) {
         if (tempNode.nodeType === Node.ELEMENT_NODE && 
@@ -2095,29 +2387,13 @@ const EditorToolbar = ({
           newListElement.classList.add('list-disc');
         }
       }
-      
-      // Apply initial indentation
-      if (initialIndentPx > 0) {
-        firstItem.style.setProperty('--indent-level', `${initialIndentPx}px`);
-      }
-      
-      // Apply alignment
-      if (alignmentContext.currentAlignment !== 'left') {
-        applyListAlignment(newListElement, alignmentContext.currentAlignment, listType);
-      }
 
-      // --- Fix: ensure caret is visible in an empty newly-created list item ---
-      const firstItemText = firstItem.textContent || '';
-      const firstItemIsEmpty = !firstItemText.trim() ||
-        firstItemText === '\u00A0' ||
-        firstItemText === '\u200B' ||
-        firstItem.innerHTML === '<br>' ||
-        firstItem.innerHTML === '';
-
+      // Ensure first item is not visually empty
+      const firstItemText = (firstItem.textContent || '').replace(/\u200B/g, '').trim();
+      const firstItemIsEmpty = firstItemText === '' || firstItem.innerHTML === '<br>' || firstItem.innerHTML === '';
       if (firstItemIsEmpty) {
-        firstItem.innerHTML = '\u00A0';
+        firstItem.innerHTML = '<br>';
       }
-      // ---------------------------------------------------------------------
 
       // Trigger callback for all lists to ensure proper cursor positioning
       if (!skipNewListCallback) {
@@ -2165,7 +2441,7 @@ const EditorToolbar = ({
         // Calling the opposite list command automatically converts the list
         // without an intermediate paragraph state.
         const command = listType === 'UL' ? 'insertUnorderedList' : 'insertOrderedList';
-        const commandSuccess = document.execCommand(command, false);
+        const commandSuccess = execLegacyCommand(command);
 
         if (!commandSuccess) {
             console.warn(`[EditorToolbar] execCommand '${command}' failed during list conversion.`);
@@ -2264,6 +2540,34 @@ const EditorToolbar = ({
     }
   };
   
+  type FormattingToggleProps = {
+    command: string;
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    pressed: boolean;
+    onApply: () => void;
+  };
+
+  const FormattingToggle: React.FC<FormattingToggleProps> = ({ command, icon: Icon, label, pressed, onApply }) => {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Toggle 
+            aria-label={`Toggle ${label.toLowerCase()}`}
+            onClick={onApply}
+            pressed={pressed}
+            data-state={pressed ? 'on' : 'off'}
+            data-command={command}
+            className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
+          >
+            <Icon className="h-4 w-4" />
+          </Toggle>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
   return (
     <TooltipProvider>
       <div 
@@ -2271,66 +2575,45 @@ const EditorToolbar = ({
         onMouseDown={handleToolbarClick}
       >
         {/* Text formatting */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Toggle 
-              aria-label="Toggle bold" 
-              onClick={() => {
-                if (showRawLatex) {
-                  onApplyLatexFormat?.('bold');
-                } else {
-                  execFormatCommand('bold');
-                }
-              }}
-              pressed={isBold}
-              data-state={isBold ? 'on' : 'off'}
-              className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
-            >
-              <Bold className="h-4 w-4" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>Bold</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Toggle 
-              aria-label="Toggle italic" 
-              onClick={() => {
-                if (showRawLatex) {
-                  onApplyLatexFormat?.('italic');
-                } else {
-                  execFormatCommand('italic');
-                }
-              }}
-              pressed={isItalic}
-              data-state={isItalic ? 'on' : 'off'}
-              className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
-            >
-              <Italic className="h-4 w-4" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>Italic</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Toggle 
-              aria-label="Toggle underline" 
-              onClick={() => {
-                if (showRawLatex) {
-                  onApplyLatexFormat?.('underline');
-                } else {
-                  execFormatCommand('underline');
-                }
-              }}
-              pressed={isUnderline}
-              data-state={isUnderline ? 'on' : 'off'}
-              className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground"
-            >
-              <Underline className="h-4 w-4" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>Underline</TooltipContent>
-        </Tooltip>
+        <FormattingToggle
+          command="bold"
+          icon={Bold}
+          label="Bold"
+          pressed={isBold}
+          onApply={() => {
+            if (showRawLatex) {
+              onApplyLatexFormat?.('bold');
+            } else {
+              execFormatCommand('bold');
+            }
+          }}
+        />
+        <FormattingToggle
+          command="italic"
+          icon={Italic}
+          label="Italic"
+          pressed={isItalic}
+          onApply={() => {
+            if (showRawLatex) {
+              onApplyLatexFormat?.('italic');
+            } else {
+              execFormatCommand('italic');
+            }
+          }}
+        />
+        <FormattingToggle
+          command="underline"
+          icon={Underline}
+          label="Underline"
+          pressed={isUnderline}
+          onApply={() => {
+            if (showRawLatex) {
+              onApplyLatexFormat?.('underline');
+            } else {
+              execFormatCommand('underline');
+            }
+          }}
+        />
       
         {/* Separator */}
         <div className="w-px h-6 bg-gray-200 dark:bg-zinc-700 mx-1"></div>
@@ -2492,7 +2775,7 @@ const EditorToolbar = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <ColorPicker 
-              key={`text-color-${currentTextColorRef.current}-${colorVersion}`}
+              key={`text-color-${colorVersion}`}
               onSelectColor={(color) => {
                 if (showRawLatex) {
                   onApplyLatexFormat?.('foreColor', color);
@@ -2512,7 +2795,7 @@ const EditorToolbar = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <ColorPicker 
-              key={`highlight-color-${currentHighlightColorRef.current}-${colorVersion}`}
+              key={`highlight-color-${colorVersion}`}
               onSelectColor={(color) => {
                 if (showRawLatex) {
                   onApplyLatexFormat?.('hiliteColor', color);

@@ -12,6 +12,8 @@
  * NOTE: This is not a general LaTeX parser; it aims to invert buildLatex.ts output.
  */
 
+const EM_TO_PX = 16;
+
 const stripDocumentWrapper = (latex: string): string => {
   // Remove preamble and \begin{document} ... \end{document}
   const beginIdx = latex.indexOf('\n\\begin{document}');
@@ -21,8 +23,6 @@ const stripDocumentWrapper = (latex: string): string => {
   }
   return latex;
 };
-
-const unescapeHtml = (text: string): string => text;
 
 const htmlEscape = (text: string): string => {
   return text
@@ -100,7 +100,8 @@ const processInline = (input: string): string => {
         const brace = parseBracedContent(s, i + '\\hl'.length);
         if (brace) {
           const inner = process(brace.content, state);
-          out.push(`<span style="background-color: ${state.highlightColor}">${inner}</span>`);
+          const escapedColor = htmlAttributeEscape(state.highlightColor);
+          out.push(`<span style="background-color: ${escapedColor}">${inner}</span>`);
           i = brace.nextIndex;
           continue;
         }
@@ -111,6 +112,11 @@ const processInline = (input: string): string => {
         const colorBrace = parseBracedContent(s, i + '\\textcolor'.length);
         if (colorBrace) {
           const color = colorBrace.content.trim();
+          // Validate color format to prevent CSS injection
+          if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+            i = colorBrace.nextIndex;
+            continue;
+          }
           const nextChar = s[colorBrace.nextIndex];
           if (nextChar === '{') {
             const innerBrace = parseBracedContent(s, colorBrace.nextIndex);
@@ -248,7 +254,7 @@ export const parseLatexToHtml = (latexDocument: string): string => {
     const hspaceMatch = inner.match(/^\s*\\hspace\*\{([0-9.]+)em\}/);
     if (hspaceMatch) {
       const em = parseFloat(hspaceMatch[1]);
-      if (!isNaN(em)) leadingIndentPx = Math.round(em * 16);
+      if (!isNaN(em)) leadingIndentPx = Math.round(em * EM_TO_PX);
       inner = inner.replace(/^\s*\\hspace\*\{[0-9.]+em\}\s*/, '');
     }
 
@@ -266,14 +272,14 @@ export const parseLatexToHtml = (latexDocument: string): string => {
       const raw = inner.slice(startContent, endContent).trim();
       const processed = processInline(raw);
       // Determine LI marker classes and color from label (for ordered lists)
-      let liClasses: string[] = [];
+      const liClasses: string[] = [];
       const label = matches[i].label || '';
       if (label) {
         if (/\\textbf/.test(label)) liClasses.push('marker-bold');
         if (/\\textit/.test(label)) liClasses.push('marker-italic');
         if (/\\underline/.test(label)) liClasses.push('marker-underline');
       }
-      const classAttr = liClasses.length ? ` class=\"${liClasses.join(' ')}\"` : '';
+      const classAttr = liClasses.length ? ` class="${liClasses.join(' ')}"` : '';
       const styleProps: Record<string, string> = {};
       if (i === 0 && leadingIndentPx > 0) {
         styleProps['--indent-level'] = `${leadingIndentPx}px`;
@@ -285,7 +291,7 @@ export const parseLatexToHtml = (latexDocument: string): string => {
         }
       }
       const styleAttr = Object.keys(styleProps).length > 0
-        ? ` style=\"${Object.entries(styleProps).map(([k, v]) => `${k}: ${v}`).join('; ')}\"`
+        ? ` style="${Object.entries(styleProps).map(([k, v]) => `${k}: ${v}`).join('; ')}"`
         : '';
       items.push(`<li${classAttr}${styleAttr}>${processed || '<br>'}</li>`);
     }
@@ -352,7 +358,7 @@ export const parseLatexToHtml = (latexDocument: string): string => {
       const hspacePara = segment.match(/^\\hspace\*\{([0-9.]+)em\}/);
       if (hspacePara) {
         const em = parseFloat(hspacePara[1]);
-        if (!isNaN(em)) paddingPx = Math.round(em * 16);
+        if (!isNaN(em)) paddingPx = Math.round(em * EM_TO_PX);
         segment = segment.replace(/^\\hspace\*\{[0-9.]+em\}\s*/, '');
       }
 
@@ -362,21 +368,36 @@ export const parseLatexToHtml = (latexDocument: string): string => {
       while ((m = tokenRegex.exec(segment)) !== null) {
         const before = segment.slice(lastIndex, m.index).trim();
         if (before.length > 0) {
-          const style = align || paddingPx ? ` style=\"${align ? `text-align: ${align}; ` : ''}${paddingPx ? `padding-left: ${paddingPx}px` : ''}\"` : '';
+          const style = align || paddingPx ? ` style="${align ? `text-align: ${align}; ` : ''}${paddingPx ? `padding-left: ${paddingPx}px` : ''}"` : '';
           htmlParts.push(`<p${style}>${processInline(before) || '<br>'}</p>`);
         }
         if (m[1] !== undefined) {
           const idx = parseInt(m[1], 10);
-          htmlParts.push(parseTable(tables[idx]));
+          if (Number.isFinite(idx) && Number.isInteger(idx) && idx >= 0 && idx < tables.length) {
+            htmlParts.push(parseTable(tables[idx]));
+          } else {
+            // Defensive: corrupted placeholder index; avoid runtime error
+            if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+              console.warn('parseLatexToHtml: invalid table index', idx, 'of', tables.length);
+            }
+            htmlParts.push('');
+          }
         } else if (m[2] !== undefined) {
           const idx = parseInt(m[2], 10);
-          htmlParts.push(listHtmlSnippets[idx]);
+          if (Number.isFinite(idx) && Number.isInteger(idx) && idx >= 0 && idx < listHtmlSnippets.length) {
+            htmlParts.push(listHtmlSnippets[idx]);
+          } else {
+            if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+              console.warn('parseLatexToHtml: invalid list index', idx, 'of', listHtmlSnippets.length);
+            }
+            htmlParts.push('');
+          }
         }
         lastIndex = m.index + m[0].length;
       }
       const after = segment.slice(lastIndex).trim();
       if (after.length > 0) {
-        const style = align || paddingPx ? ` style=\"${align ? `text-align: ${align}; ` : ''}${paddingPx ? `padding-left: ${paddingPx}px` : ''}\"` : '';
+        const style = align || paddingPx ? ` style="${align ? `text-align: ${align}; ` : ''}${paddingPx ? `padding-left: ${paddingPx}px` : ''}"` : '';
         htmlParts.push(`<p${style}>${processInline(after) || '<br>'}</p>`);
       }
     });

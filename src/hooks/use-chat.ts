@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatTab, ChatHistoryItem, UserSettings } from '../types';
 import { getDeterministicResponse } from '../lib/intentMappings';
+import { getApiBaseUrl, joinUrl } from '../lib/config';
 import { showChatDeletedToast, showErrorToast } from '../utils/toastUtils';
 
 export const useChat = (userSettings: UserSettings) => {
@@ -163,7 +164,7 @@ export const useChat = (userSettings: UserSettings) => {
         return tab;
       }));
       // Update chat history (last message)
-      const updatedHistory = chatHistory.map(chat => chat.id === activeTabId ? { ...chat, lastMessage: userText } : chat);
+      const updatedHistory = chatHistory.map(chat => chat.id === activeTabId ? { ...chat, lastMessage: deterministic } : chat);
       setChatHistory(updatedHistory);
       localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
       return;
@@ -173,7 +174,9 @@ export const useChat = (userSettings: UserSettings) => {
     let sessionId = updatedTabs.find(t => t.id === activeTabId)?.sessionId;
     try {
       if (!sessionId) {
-        const r = await fetch('http://127.0.0.1:5057/add_session');
+        const apiBase = getApiBaseUrl();
+        const addSessionUrl = joinUrl(apiBase, '/add_session');
+        const r = await fetch(addSessionUrl);
         const j = await r.json();
         sessionId = j.session_id;
         const tabsWithSession = updatedTabs.map(tab => tab.id === activeTabId ? { ...tab, sessionId } : tab);
@@ -182,7 +185,9 @@ export const useChat = (userSettings: UserSettings) => {
       }
 
       // Send chat to backend
-      const resp = await fetch('http://127.0.0.1:5057/chat', {
+      const apiBase = getApiBaseUrl();
+      const chatUrl = joinUrl(apiBase, '/chat');
+      const resp = await fetch(chatUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, user_input: userText })
@@ -200,7 +205,9 @@ export const useChat = (userSettings: UserSettings) => {
           setShowEditorSplit(true);
           setEditorLatex(latexPayload);
         }
-      } catch (_e) {
+      } catch (e) {
+        const failedPayload = typeof assistantText === 'string' ? assistantText.trim() : String(assistantText);
+        console.error('Failed to parse <exercise> payload; editor will not open. Error:', e, 'Payload:', failedPayload);
         // Non-fatal: if parsing fails, continue without opening the editor
       }
 

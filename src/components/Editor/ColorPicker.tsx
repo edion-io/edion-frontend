@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, forwardRef } from 'react';
+import { useState, useRef, useEffect, useCallback, forwardRef, useMemo } from 'react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Toggle } from '../ui/toggle';
@@ -181,17 +181,11 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
       };
     };
     
-    // Update color from HSV values
-    const updateColorFromHsv = (newHsv: HSV) => {
-      const rgb = hsvToRgb(newHsv.h, newHsv.s, newHsv.v);
-      const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
-      setCustomColor(hex);
-      setHsv(newHsv);
-      updateColorIndicatorPosition(newHsv);
-    };
+    // Memoize RGB parsing of the current customColor to avoid repeated regex work during render
+    const customRgb: RGB = useMemo(() => hexToRgb(customColor) || { r: 0, g: 0, b: 0 }, [customColor]);
     
     // Update indicator positions based on HSV
-    const updateColorIndicatorPosition = (newHsv: HSV) => {
+    const updateColorIndicatorPosition = useCallback((newHsv: HSV) => {
       if (gradientRef.current && colorIndicatorRef.current) {
         const rect = gradientRef.current.getBoundingClientRect();
         const x = (newHsv.s / 100) * rect.width;
@@ -207,41 +201,63 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
         
         hueIndicatorRef.current.style.left = `${x}px`;
       }
-    };
+    }, [gradientRef, colorIndicatorRef, hueSliderRef, hueIndicatorRef]);
+    
+    // Update color from HSV values
+    const updateColorFromHsv = useCallback((newHsv: HSV) => {
+      const rgb = hsvToRgb(newHsv.h, newHsv.s, newHsv.v);
+      const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+      setCustomColor(hex);
+      setHsv(newHsv);
+      updateColorIndicatorPosition(newHsv);
+    }, [updateColorIndicatorPosition]);
     
     // Handle color selection in gradient
-    const handleSaturationValueChange = (clientX: number, clientY: number) => {
+    const handleSaturationValueChange = useCallback((clientX: number, clientY: number) => {
       if (!gradientRef.current) return;
       
       const rect = gradientRef.current.getBoundingClientRect();
       
+      // Guard against zero-sized rect to avoid division by zero
+      if (rect.width === 0 || rect.height === 0) {
+        return;
+      }
+      
       // Constrain position within the gradient area
-      let x = Math.max(0, Math.min(rect.width, clientX - rect.left));
-      let y = Math.max(0, Math.min(rect.height, clientY - rect.top));
+      const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
       
       // Calculate saturation and value from position
-      const s = Math.round((x / rect.width) * 100);
-      const v = Math.round((1 - y / rect.height) * 100);
+      const safeWidth = rect.width || 1;
+      const safeHeight = rect.height || 1;
+      const s = Math.round((x / safeWidth) * 100);
+      const v = Math.round((1 - y / safeHeight) * 100);
       
       // Update HSV with new saturation and value, keeping current hue
       updateColorFromHsv({ h: hsv.h, s, v });
-    };
+    }, [hsv.h, updateColorFromHsv]);
     
     // Handle hue selection in slider
-    const handleHueChange = (clientX: number) => {
+    const handleHueChange = useCallback((clientX: number) => {
       if (!hueSliderRef.current) return;
       
       const rect = hueSliderRef.current.getBoundingClientRect();
       
+      // Guard against zero-sized rect to avoid division by zero
+      if (rect.width === 0) {
+        return;
+      }
+      
       // Constrain position within the slider area
-      let x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
       
       // Calculate hue from position
-      const h = Math.round((x / rect.width) * 360);
+      const safeWidth = rect.width || 1;
+      const h = Math.round((x / safeWidth) * 360);
       
       // Update HSV with new hue, keeping current saturation and value
       updateColorFromHsv({ h, s: hsv.s, v: hsv.v });
-    };
+    }, [hsv.s, hsv.v, updateColorFromHsv]);
     
     // Event handlers for mouse interactions
     const handleGradientClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -288,19 +304,19 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
       };
-    }, [isDragging, isDraggingHue]);
+    }, [isDragging, isDraggingHue, handleSaturationValueChange, handleHueChange]);
     
     // Initialize HSV when custom color changes
     useEffect(() => {
       if (showCustom) {
-        const rgb = hexToRgb(customColor);
+        const rgb = customRgb;
         if (rgb) {
           const newHsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
           setHsv(newHsv);
           updateColorIndicatorPosition(newHsv);
         }
       }
-    }, [showCustom, customColor]);
+    }, [showCustom, customRgb, updateColorIndicatorPosition]);
     
     // Handle manual input changes
     const handleHexChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -322,7 +338,7 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
       const numValue = Math.min(255, Math.max(0, parseInt(value || '0', 10)));
       
       // Parse current RGB
-      const rgb = hexToRgb(customColor) || { r: 0, g: 0, b: 0 };
+      const rgb = customRgb;
       
       // Update the specific component
       const newRgb = {
@@ -398,6 +414,12 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
                       backgroundPosition: '0 0, 3px 3px'
                     }}
                     onClick={() => handleSelectColor('transparent')}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                        if (e.key !== 'Enter') e.preventDefault();
+                        handleSelectColor('transparent');
+                      }
+                    }}
                     aria-label="Transparent"
                   >
                     {(selectedColor === 'transparent' || (!selectedColor && initialColor === 'transparent')) && 
@@ -420,6 +442,12 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
                                 hover:scale-110 transition-transform flex items-center justify-center"
                         style={{ backgroundColor: color }}
                         onClick={() => handleSelectColor(color)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                            if (e.key !== 'Enter') e.preventDefault();
+                            handleSelectColor(color);
+                          }
+                        }}
                         aria-label={`Recent color: ${color}`}
                       >
                         {selectedColor === color && <Check className="h-3 w-3 text-white drop-shadow-sm" />}
@@ -441,6 +469,12 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
                                  hover:scale-110 transition-transform flex items-center justify-center"
                         style={{ backgroundColor: color }}
                         onClick={() => handleSelectColor(color)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                            if (e.key !== 'Enter') e.preventDefault();
+                            handleSelectColor(color);
+                          }
+                        }}
                         aria-label={`Color: ${color}`}
                       >
                         {selectedColor === color && <Check className="h-3 w-3 text-white drop-shadow-sm" />}
@@ -538,7 +572,7 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
                       type="number" 
                       min="0" 
                       max="255" 
-                      value={hexToRgb(customColor)?.r || 0}
+                      value={customRgb.r}
                       onChange={(e) => handleRGBChange('r', e.target.value)}
                       className="h-8 text-sm w-full"
                     />
@@ -549,7 +583,7 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
                       type="number" 
                       min="0" 
                       max="255" 
-                      value={hexToRgb(customColor)?.g || 0}
+                      value={customRgb.g}
                       onChange={(e) => handleRGBChange('g', e.target.value)}
                       className="h-8 text-sm w-full"
                     />
@@ -560,7 +594,7 @@ export const ColorPicker = forwardRef<HTMLButtonElement, ColorPickerProps>(
                       type="number" 
                       min="0" 
                       max="255" 
-                      value={hexToRgb(customColor)?.b || 0}
+                      value={customRgb.b}
                       onChange={(e) => handleRGBChange('b', e.target.value)}
                       className="h-8 text-sm w-full"
                     />

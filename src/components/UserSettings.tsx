@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, Lock, Mail, Shield, Check, RefreshCw } from 'lucide-react';
 import { UserSettings as UserSettingsType } from '../types';
 import { Switch } from "@/components/ui/switch";
@@ -53,8 +53,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
   // We'll use the original settings as a reference so we can revert if needed
   const originalDarkMode = settings.darkMode;
 
-  const tabIndicatorRef = useRef<HTMLDivElement>(null);
-  const preferencesContentRef = useRef<HTMLDivElement>(null);
+  
 
 
   // Apply dark mode in real-time when the toggle changes
@@ -177,21 +176,7 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
     show2FADisabledToast();
   };
 
-  const handleTabClick = (tabId: string) => {
-    
-    // Animate tab indicator
-    const tabElement = document.getElementById(`tab-${tabId}`);
-    if (tabElement && tabIndicatorRef.current) {
-      
-    }
-  };
-
-  const handlePreferencesTabClick = (e: React.MouseEvent) => {
-    console.log('Preferences tab clicked');
-    e.stopPropagation();
-    e.nativeEvent.stopImmediatePropagation();
-    setActiveTab("preferences");
-  };
+  
 
   const TabContent = ({ activeTab }: { activeTab: string }) => {
     switch (activeTab) {
@@ -629,9 +614,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
               <TabsContent 
                 value="profile" 
                 className="space-y-4"
-                onClick={(e) => {
-                  
-                }}
               >
                 <TabContent activeTab="profile" />
               </TabsContent>
@@ -639,9 +621,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
               <TabsContent 
                 value="security" 
                 className="space-y-4"
-                onClick={(e) => {
-                  
-                }}
               >
                 <TabContent activeTab="security" />
               </TabsContent>
@@ -649,9 +628,6 @@ const UserSettings: React.FC<UserSettingsProps> = ({ settings, onClose, onSave }
               <TabsContent 
                 value="notifications" 
                 className="space-y-4"
-                onClick={(e) => {
-                  
-                }}
               >
                 <div className="space-y-6">
                   <h2 className="text-xl font-semibold mb-4">Notification Preferences</h2>

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useId, type RefObject } from "react";
 import { Button } from "../ui/button";
 import { Clipboard, ClipboardCheck } from "lucide-react";
+
+const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
 /**
  * Controlled view of a LaTeX document.
@@ -9,24 +11,26 @@ import { Clipboard, ClipboardCheck } from "lucide-react";
 interface LatexViewProps {
   latexDocument: string;
   onChange?: (latex: string) => void;
+  textareaRef?: RefObject<HTMLTextAreaElement>;
 }
 
-const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
+const LatexView = ({ latexDocument, onChange, textareaRef: externalTextareaRef }: LatexViewProps) => {
   const [copied, setCopied] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = externalTextareaRef ?? internalTextareaRef;
   // Undo/redo stacks for controlled textarea
   const undoStackRef = useRef<string[]>([]);
   const redoStackRef = useRef<string[]>([]);
   const lastPushedRef = useRef<string | null>(null);
   const applyingUndoRedoRef = useRef<boolean>(false);
   const MAX_HISTORY = 200;
+  const labelId = useId();
   
   const copyToClipboard = async () => {
     if (textareaRef.current) {
       try {
         await navigator.clipboard.writeText(textareaRef.current.value);
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
       } catch (err) {
         console.error('Failed to copy text: ', err);
       }
@@ -59,8 +63,15 @@ const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
     }
   }, [latexDocument]);
 
+  // Reset copied state after a delay; ensures cleanup on change/unmount
+  useEffect(() => {
+    if (!copied) return;
+    const timeoutId = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timeoutId);
+  }, [copied]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+    if (!onChange) return; // Skip shortcuts in read-only mode
     const mod = isMac ? e.metaKey : e.ctrlKey;
     const key = e.key.toLowerCase();
     // Undo
@@ -91,7 +102,7 @@ const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
   return (
     <div className="flex flex-col flex-grow gap-2">
       <div className="flex justify-between items-center mb-2">
-        <h2 className="text-sm font-medium">Raw LaTeX Document</h2>
+        <h2 id={labelId} className="text-sm font-medium">Raw LaTeX Document</h2>
         <Button 
           variant="outline" 
           size="sm" 
@@ -118,6 +129,10 @@ const LatexView = ({ latexDocument, onChange }: LatexViewProps) => {
         onChange={handleTextChange}
         onKeyDown={handleKeyDown}
         readOnly={!onChange}
+        aria-labelledby={labelId}
+        aria-multiline="true"
+        aria-readonly={!onChange}
+        role="textbox"
         className="flex-grow p-4 bg-secondary font-mono text-sm rounded-md resize-none focus:outline-none focus:ring-1 focus:ring-primary"
         style={{ minHeight: "300px" }}
       />

@@ -39,7 +39,6 @@ const ActionCards = () => {
           delay={0.4}
         />
         
-        
         <AnimatePresence>
           {isExpanded && (
             <>

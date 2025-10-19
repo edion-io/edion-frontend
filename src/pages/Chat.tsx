@@ -8,11 +8,9 @@ import ChatInput from '../components/ChatInput';
 import { useChat } from '../hooks/use-chat';
 import { updateUserSettings, getUserSettingsFromStorage } from '../utils/storageUtils';
 import RichTextArea from '../components/Editor/RichTextArea';
-import { parseLatexToHtml } from '../lib/parseLatex';
+import useEditorSync from '../hooks/useEditorSync';
 import EditorToolbar from '../components/Editor/EditorToolbar';
-import useInlineMath from '../hooks/useInlineMath';
 import LatexView from '../components/Editor/LatexView';
-import { buildLatexDocument } from '../lib/buildLatex';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
 import DragHandle from '../components/DragHandle';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -110,20 +108,32 @@ const Chat = () => {
     };
   }, [userSettings.darkMode]);
 
-  // Editor state for split view (must be declared before any early returns)
-  const editorRef = useRef<HTMLDivElement>(null);
-  const [editorContent, setEditorContent] = useState<string>('');
-  const { insertMathDelimiters } = useInlineMath(editorRef);
-  const [execFormatCommand, setExecFormatCommand] = useState<((command: string, value?: string) => void) | null>(null);
-  const [showRawLatex, setShowRawLatex] = useState(false);
-  const suppressLatexSyncRef = useRef(false);
-  // When true, the latest editorLatex update came from the WYSIWYG editor.
-  // In that case we must not re-parse LaTeX back to HTML or we'll reset the caret.
-  const skipPopulateFromEditorRef = useRef(false);
-  const [editorOnLeft, setEditorOnLeft] = useState(true);
-  const [isDraggingPane, setIsDraggingPane] = useState(false);
-  const [dragOverEditor, setDragOverEditor] = useState(false);
-  const [dragOverChat, setDragOverChat] = useState(false);
+  // Editor state and sync logic moved into custom hook
+  const {
+    editorRef,
+    editorContent,
+    setEditorContent,
+    insertMathDelimiters,
+    execFormatCommand,
+    setExecFormatCommand,
+    showRawLatex,
+    setShowRawLatex,
+    editorOnLeft,
+    setEditorOnLeft,
+    isDraggingPane,
+    setIsDraggingPane,
+    dragOverEditor,
+    setDragOverEditor,
+    dragOverChat,
+    setDragOverChat,
+    handleIndent,
+    handleOutdent,
+    insertTable,
+  } = useEditorSync({
+    showEditorSplit,
+    initialLatex: editorLatex || '',
+    onLatexChange: setEditorLatex,
+  });
 
   const handleKeyboardSwap = (pane: 'editor' | 'chat', direction: 'left' | 'right' | 'toggle') => {
     if (direction === 'toggle') {
@@ -138,71 +148,7 @@ const Chat = () => {
     setEditorOnLeft(direction === 'right');
   };
   
-  const handleIndent = () => {
-    document.execCommand('indent');
-  };
-
-  const handleOutdent = () => {
-    document.execCommand('outdent');
-  };
-
-  const insertTable = (rows: number, cols: number) => {
-    if (!editorRef.current) return;
-    editorRef.current.focus();
-    const selection = window.getSelection();
-    if (!selection || !selection.rangeCount) return;
-    let tableHTML = '<table class="editor-table" data-rows="' + rows + '" data-cols="' + cols + '">';
-    tableHTML += '<thead><tr>' + Array.from({ length: cols }).map((_, i) => '<th contenteditable="true">Header ' + (i + 1) + '</th>').join('') + '</tr></thead>';
-    tableHTML += '<tbody>' + Array.from({ length: Math.max(rows - 1, 1) }).map(() => '<tr>' + Array.from({ length: cols }).map(() => '<td contenteditable="true">Cell</td>').join('') + '</tr>').join('') + '</tbody></table><p><br></p>';
-    document.execCommand('insertHTML', false, tableHTML);
-    if (editorRef.current) {
-      setEditorContent(editorRef.current.innerHTML);
-    }
-  };
-
-  // Populate WYSIWYG when deterministic LaTeX is set
-  useEffect(() => {
-    if (showEditorSplit && editorLatex) {
-      // If LaTeX was produced by the editor itself, skip re-populating HTML
-      // to avoid resetting the user's caret/selection.
-      if (skipPopulateFromEditorRef.current) {
-        skipPopulateFromEditorRef.current = false;
-        return;
-      }
-      try {
-        const html = parseLatexToHtml(editorLatex);
-        // Prevent immediate LaTeX rebuild caused by this programmatic HTML set
-        suppressLatexSyncRef.current = true;
-        setEditorContent(html);
-        // Also update live DOM if already mounted
-        if (editorRef.current) {
-          editorRef.current.innerHTML = html;
-          const event = new Event('input', { bubbles: true });
-          editorRef.current.dispatchEvent(event);
-        }
-      } catch (_e) {
-        // If parse fails, keep split open without content update
-      }
-    }
-  }, [showEditorSplit, editorLatex]);
-
-  // Keep LaTeX in sync when WYSIWYG changes
-  useEffect(() => {
-    if (!showEditorSplit) return;
-    if (suppressLatexSyncRef.current) {
-      suppressLatexSyncRef.current = false;
-      return;
-    }
-    try {
-      const doc = buildLatexDocument(editorContent);
-      // Mark that this LaTeX originated from the editor so populate step won't
-      // re-parse it back into HTML and clobber the caret position.
-      skipPopulateFromEditorRef.current = true;
-      setEditorLatex(doc);
-    } catch (_e) {
-      // ignore conversion failures during typing
-    }
-  }, [editorContent, showEditorSplit, setEditorLatex]);
+  // Indentation, table insertion, and LaTeX↔HTML sync handled by useEditorSync
 
   const handleEditMessage = (messageId: number, newText: string) => {
     if (messageId === -1) {
@@ -326,7 +272,7 @@ const Chat = () => {
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
                         className={`h-full min-h-0 p-3 flex flex-col transition-all duration-200 ${dragOverEditor ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
-                        onDragOver={(e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch(_e){}; setDragOverEditor(true); }}
+                        onDragOver={(e) => { e.preventDefault(); const dt = e.dataTransfer; if (dt && 'dropEffect' in dt) { try { dt.dropEffect = 'move'; } catch (err) { const name = (err && (err as { name?: string }).name) || ''; if (name === 'SecurityError' || name === 'NotAllowedError' || name === 'InvalidStateError') { /* ignore benign browser exceptions when setting dropEffect */ } else { console.error('Error setting dataTransfer.dropEffect:', err); } } } setDragOverEditor(true); }}
                         onDragEnter={() => setDragOverEditor(true)}
                         onDragLeave={() => setDragOverEditor(false)}
                         onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'chat') setEditorOnLeft(false); setDragOverEditor(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
@@ -387,7 +333,7 @@ const Chat = () => {
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
                         className={`h-full min-h-0 flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
-                        onDragOver={(e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch(_e){}; setDragOverChat(true); }}
+                        onDragOver={(e) => { e.preventDefault(); const dt = e.dataTransfer; if (dt && 'dropEffect' in dt) { try { dt.dropEffect = 'move'; } catch (err) { const name = (err && (err as { name?: string }).name) || ''; if (name === 'SecurityError' || name === 'NotAllowedError' || name === 'InvalidStateError') { /* ignore benign browser exceptions when setting dropEffect */ } else { console.error('Error setting dataTransfer.dropEffect:', err); } } } setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
                         onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(false); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
@@ -434,7 +380,7 @@ const Chat = () => {
                     <ResizablePanel defaultSize={50} minSize={20}>
                       <div
                         className={`h-full min-h-0 flex flex-col transition-all duration-200 ${dragOverChat ? 'ring-2 ring-indigo-500/60 shadow-lg scale-[1.01]' : ''}`}
-                        onDragOver={(e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch(_e){}; setDragOverChat(true); }}
+                        onDragOver={(e) => { e.preventDefault(); const dt = e.dataTransfer; if (dt && 'dropEffect' in dt) { try { dt.dropEffect = 'move'; } catch (err) { const name = (err && (err as any).name) || ''; if (name === 'SecurityError' || name === 'NotAllowedError' || name === 'InvalidStateError') { /* ignore benign browser exceptions when setting dropEffect */ } else { console.error('Error setting dataTransfer.dropEffect:', err); } } } setDragOverChat(true); }}
                         onDragEnter={() => setDragOverChat(true)}
                         onDragLeave={() => setDragOverChat(false)}
                         onDrop={(e) => { e.preventDefault(); const src = e.dataTransfer.getData('text/pane'); if (src === 'editor') setEditorOnLeft(true); setDragOverChat(false); setIsDraggingPane(false); document.body.classList.remove('dragging-pane'); }}
@@ -483,7 +429,17 @@ const Chat = () => {
                         }`}
                         onDragOver={(e) => {
                           e.preventDefault();
-                          try { e.dataTransfer.dropEffect = 'move'; } catch(_e){}
+                          const dt = e.dataTransfer;
+                          if (dt && 'dropEffect' in dt) {
+                            try { dt.dropEffect = 'move'; } catch (err) {
+                              const name = (err && (err as { name?: string }).name) || '';
+                              if (name === 'SecurityError' || name === 'NotAllowedError' || name === 'InvalidStateError') {
+                                // ignore benign browser exceptions when setting dropEffect
+                              } else {
+                                console.error('Error setting dataTransfer.dropEffect:', err);
+                              }
+                            }
+                          }
                           setDragOverEditor(true);
                         }}
                         onDragEnter={() => setDragOverEditor(true)}

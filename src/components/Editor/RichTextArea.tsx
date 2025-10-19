@@ -7,6 +7,14 @@ interface ListStyle {
   marker: string;
 }
 
+// Minimal runtime shape for MathLive custom element used in this file
+interface MathFieldElement extends HTMLElement {
+  value?: string;
+  executeCommand: (command: string | string[]) => void;
+  position: number;
+}
+
+ 
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -25,40 +33,25 @@ interface RichTextAreaProps {
   onFormatCommand?: (command: string, value?: string) => void;
 }
 
-// Add type declaration at the top of the file to support our custom property
-declare global {
-  interface HTMLElement {
-    _spaceFixScheduled?: ReturnType<typeof setTimeout>;
-  }
-}
+ 
 
 const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTextAreaProps) => {
   const { handleKeyDown: handleInlineMathKeyDown, handleMathFieldDelete } = useInlineMath();
   
-  // === Debug helpers ===
-  const DEBUG_MATH = false;
-  const dlog = (..._args: any[]) => {};
-  const dgroup = (_label: string) => {};
-  const dgroupEnd = () => {};
+  
 
-  const nodeSummary = (n: Node | null) => {
-    if (!n) return 'null';
-    if (n.nodeType === Node.TEXT_NODE) {
-      const text = (n.textContent || '').replace(/\s+/g, ' ').slice(0, 40);
-      return `#text("${text}")`;
-    }
-    const el = n as Element;
-    const cls = (el as HTMLElement).className ? '.' + (el as HTMLElement).className : '';
-    return `<${el.nodeName.toLowerCase()}${cls}>`;
-  };
+  // Inject styles on the client only, and only once
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const styleId = 'rich-text-editor-styles';
+    if (document.getElementById(styleId)) return;
+    const styleElement = document.createElement('style');
+    styleElement.id = styleId;
+    styleElement.textContent = styles;
+    document.head.appendChild(styleElement);
+  }, []);
 
-  const rangeSummary = (r: Range) => ({
-    start: nodeSummary(r.startContainer),
-    startOffset: r.startOffset,
-    end: nodeSummary(r.endContainer),
-    endOffset: r.endOffset,
-    collapsed: r.collapsed,
-  });
+  
 
   const getBlockAncestor = (node: Node, root: HTMLElement): HTMLElement | null => {
     let cur: Node | null = node;
@@ -131,8 +124,11 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
     { className: 'list-square', marker: 'square' }
   ];
   
+  const DEFAULT_UL_BASE_EM = 1.5; // Base left padding in em for UL lists
+  const DEFAULT_OL_BASE_EM = 2.2; // Base left padding in em for OL lists
   const PX_PER_EM_LEVEL = 24; // Approx 1.5em * 16px/em (used by toolbar for one indent step)
   const TAB_INDENT_STEP_PX = 40;
+  const FOUR_NON_BREAKING_SPACES = '\u00A0\u00A0\u00A0\u00A0';
 
   // Calculate responsive maximum indentation based on editor width
   const getMaxIndentPx = (): number => {
@@ -166,9 +162,9 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       if (!isNaN(emVal)) {
         // Determine base padding for the list type to subtract it
         const listElement = listItem.closest('ul, ol') as HTMLElement | null;
-        let baseEmPadding = 1.5; // Default for UL
+        let baseEmPadding = DEFAULT_UL_BASE_EM; // Base padding in em for UL
         if (listElement && listElement.tagName === 'OL') {
-          baseEmPadding = 2.2; // For OL
+          baseEmPadding = DEFAULT_OL_BASE_EM; // Base padding in em for OL
         }
         const netEmIndent = Math.max(0, emVal - baseEmPadding);
         // Convert em levels (1.5em per level) to px. Each 1.5em is one PX_PER_EM_LEVEL step.
@@ -181,7 +177,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
   };
   
   const handleIndent = (listItem: HTMLElement, listElement: HTMLElement) => {
-    let currentPxIndent = getEffectivePxIndent(listItem);
+    const currentPxIndent = getEffectivePxIndent(listItem);
     const maxIndent = getMaxIndentPx();
     const newIndent = Math.min(currentPxIndent + TAB_INDENT_STEP_PX, maxIndent);
     
@@ -201,7 +197,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
   };
 
   const handleOutdent = (listItem: HTMLElement, listElement: HTMLElement) => {
-    let currentPxIndent = getEffectivePxIndent(listItem);
+    const currentPxIndent = getEffectivePxIndent(listItem);
 
     if (currentPxIndent > 0) {
       const newIndent = Math.max(0, currentPxIndent - TAB_INDENT_STEP_PX);
@@ -297,7 +293,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             
             if (potentialMathField && potentialMathField instanceof HTMLElement && potentialMathField.classList.contains('math-field')) {
                 e.preventDefault();
-                const mathFieldElement = potentialMathField as any;
+                const mathFieldElement = potentialMathField as MathFieldElement;
                 mathFieldElement.focus();
                 mathFieldElement.executeCommand(['moveTo', 'end']); // Move caret to the end
                 return;
@@ -319,7 +315,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             
             if (potentialMathField && potentialMathField instanceof HTMLElement && potentialMathField.classList.contains('math-field')) {
                 e.preventDefault();
-                const mathFieldElement = potentialMathField as any;
+                const mathFieldElement = potentialMathField as MathFieldElement;
                 mathFieldElement.focus();
                 mathFieldElement.executeCommand(['moveTo', 'start']); // Move caret to the start
                 return;
@@ -411,14 +407,14 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
           
           // Focus the math field - MathLive will automatically position the cursor
           // at the start when moving right, and at the end when moving left
-          (mathField as any).focus();
+          (mathField as HTMLElement).focus();
           return;
         }
       }
       
       // Handle cursor movement from within math field
       if (target.classList.contains('math-field')) {
-        const mathField = target as any;
+        const mathField = target as MathFieldElement;
         const initialPosition = mathField.position;
         const mathValue = mathField.value;
 
@@ -547,8 +543,8 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         
         // Check if we're at the start of a text node right after a math-field
         if (range.collapsed) {
-          let node = range.startContainer;
-          let offset = range.startOffset;
+          const node = range.startContainer;
+          const offset = range.startOffset;
           let mathNode: Node | null = null;
           
           // If we're in a text node
@@ -723,7 +719,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
                 // Apply list indent (simplified version)
                 const currentIndent = parseInt(listItem.style.getPropertyValue('--indent-level') || '0', 10);
                 const maxIndent = getMaxIndentPx();
-                const newIndent = Math.min(currentIndent + 40, maxIndent);
+                const newIndent = Math.min(currentIndent + TAB_INDENT_STEP_PX, maxIndent);
                 listItem.style.setProperty('--indent-level', `${newIndent}px`);
                 
                 // Add/remove visual indicator for maximum indent
@@ -744,7 +740,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
                     if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) {
                                           const currentPadding = parseInt(element.style.paddingLeft || '0', 10);
                     const maxIndent = getMaxIndentPx();
-                    const newPadding = Math.min(currentPadding + 40, maxIndent);
+                    const newPadding = Math.min(currentPadding + TAB_INDENT_STEP_PX, maxIndent);
                     element.style.paddingLeft = `${newPadding}px`;
                     
                     // Add/remove visual indicator for maximum indent
@@ -793,7 +789,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
               if (listItem) {
                 // Apply list outdent (simplified version)
                 const currentIndent = parseInt(listItem.style.getPropertyValue('--indent-level') || '0', 10);
-                const newIndent = Math.max(currentIndent - 40, 0);
+                const newIndent = Math.max(currentIndent - TAB_INDENT_STEP_PX, 0);
                 if (newIndent === 0) {
                   listItem.style.removeProperty('--indent-level');
                 } else {
@@ -813,7 +809,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
                     const element = paragraph as HTMLElement;
                     if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) {
                       const currentPadding = parseInt(element.style.paddingLeft || '0', 10);
-                      const newPadding = Math.max(currentPadding - 40, 0);
+                      const newPadding = Math.max(currentPadding - TAB_INDENT_STEP_PX, 0);
                       if (newPadding === 0) {
                         element.style.removeProperty('padding-left');
                       } else {
@@ -1138,11 +1134,11 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         range = selection.getRangeAt(0);
       }
 
-      let node = range.startContainer; // Node for traversal might have changed
+      const node = range.startContainer; // Node for traversal might have changed
       let listItem: HTMLElement | null = null;
       let listElement: HTMLElement | null = null;
       let currentBlockElement: HTMLElement | null = null;
-      let isNewlyCreatedP = false; // Flag if we just made a P (though formatBlock handles this)
+      const isNewlyCreatedP = false; // Flag if we just made a P (though formatBlock handles this)
 
       // 1. Find existing block element or list item
       let tempNode = range.startContainer;
@@ -1220,7 +1216,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
         }
       } else if (isAtStartOfBlock && !listItem && currentBlockElement) { // Indent paragraph or other block if at the start
         const currentPadding = parseFloat(currentBlockElement.style.paddingLeft || '0');
-        const indentAmount = 40; // Corresponds to 40px, consistent with list indentation logic
+        const indentAmount = TAB_INDENT_STEP_PX; // Corresponds to 40px, consistent with list indentation logic
 
         if (e.shiftKey) { // Outdent
           const newPadding = Math.max(0, currentPadding - indentAmount);
@@ -1248,7 +1244,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       }
       else {
         // Not at the start of a block, or in a list but not at the start of LI: insert spaces
-        const tabTextNode = document.createTextNode('\u00a0\u00a0\u00a0\u00a0'); // Four non-breaking spaces
+        const tabTextNode = document.createTextNode(FOUR_NON_BREAKING_SPACES); // Four non-breaking spaces
         range.deleteContents();
         range.insertNode(tabTextNode);
         
@@ -1757,10 +1753,10 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
                   null
                 );
                 
-                let lastTextNode = null;
-                let currentNode;
+                let lastTextNode: Node | null = null;
+                let currentNode: Node | null;
                 
-                while (currentNode = walker.nextNode()) {
+                while ((currentNode = walker.nextNode())) {
                   lastTextNode = currentNode;
                 }
                 
@@ -1865,7 +1861,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
             if (originalRange && originalRange.startContainer.nodeType === Node.TEXT_NODE) {
               // Look for a text node at the same relative position
               const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, null);
-              let textNode = walker.nextNode();
+              const textNode = walker.nextNode();
               if (textNode) {
                 newRange.setStart(textNode, 0);
               } else {
@@ -1950,12 +1946,12 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
     // --- Find the bounding rect of the last visible character ---
     let lastRect = rect;
     let lastTextNode: Node | null = null;
-    let walker = document.createTreeWalker(blockElem, NodeFilter.SHOW_TEXT, {
+    const walker = document.createTreeWalker(blockElem, NodeFilter.SHOW_TEXT, {
       acceptNode: (node) => node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
     });
-    let node: Node | null;
-    while ((node = walker.nextNode())) {
-      lastTextNode = node;
+    let nodeIter: Node | null;
+    while ((nodeIter = walker.nextNode())) {
+      lastTextNode = nodeIter;
     }
     if (lastTextNode) {
       const range = document.createRange();
@@ -2326,70 +2322,7 @@ const RichTextArea = ({ content, onChange, editorRef, onFormatCommand }: RichTex
       mathField.setAttribute('data-initialized', 'true');
     });
   };
-  
-  // Function to preserve math fields during DOM operations
-  const preserveMathFields = <T extends any>(operation: () => T): T => {
-    if (!editorRef.current) return operation();
-    
-    // Store all math fields and their data before the operation
-    const mathFields = Array.from(editorRef.current.querySelectorAll('math-field'));
-    const mathFieldsData = mathFields.map(field => ({
-      element: field,
-      latex: field.getAttribute('data-latex') || '',
-      value: (field as any).value || '',
-      placeholder: `__MATH_FIELD_${Math.random().toString(36).substr(2, 9)}__`
-    }));
-    
-    // Replace math fields with placeholders
-    mathFieldsData.forEach(data => {
-      const placeholder = document.createTextNode(data.placeholder);
-      data.element.parentNode?.replaceChild(placeholder, data.element);
-    });
-    
-    // Execute the operation
-    const result = operation();
-    
-    // Restore math fields from placeholders
-    setTimeout(() => {
-      mathFieldsData.forEach(data => {
-        const walker = document.createTreeWalker(
-          editorRef.current!,
-          NodeFilter.SHOW_TEXT,
-          null
-        );
-        
-        let textNode: Text | null;
-        while ((textNode = walker.nextNode() as Text)) {
-          if (textNode.nodeValue?.includes(data.placeholder)) {
-            // Replace placeholder with math field
-            const mathField = document.createElement('math-field');
-            mathField.className = 'math-field';
-            mathField.setAttribute('data-latex', data.latex);
-            mathField.setAttribute('value', data.value);
-            mathField.setAttribute('virtual-keyboard-mode', 'manual');
-            mathField.setAttribute('keypress-sound', 'none');
-            mathField.setAttribute('plonk-sound', 'none');
-            
-            // Replace the text node containing the placeholder
-            const newText = textNode.nodeValue.replace(data.placeholder, '');
-            if (newText) {
-              textNode.nodeValue = newText;
-              textNode.parentNode?.insertBefore(mathField, textNode);
-            } else {
-              textNode.parentNode?.replaceChild(mathField, textNode);
-            }
-            // Add event listener
-            addMathFieldInputListener(mathField);
-            mathField.setAttribute('data-initialized', 'true');
-            
-            break;
-          }
-        }
-      });
-    }, 0);
-    
-    return result;
-  };
+ 
   
   return (
     <div
@@ -2723,9 +2656,6 @@ const styles = `
 }
 `;
 
-// Apply the styles
-const styleElement = document.createElement('style');
-styleElement.textContent = styles;
-document.head.appendChild(styleElement);
+// Styles are injected via a client-only effect above to avoid SSR side effects and duplicates
 
 export default RichTextArea; 

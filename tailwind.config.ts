@@ -1,5 +1,7 @@
 import type { Config } from "tailwindcss";
 
+import tailwindAnimate from "tailwindcss-animate";
+
 export default {
   darkMode: ["class"],
   content: [
@@ -160,7 +162,7 @@ export default {
     }
   },
   plugins: [
-    require("tailwindcss-animate"),
+    tailwindAnimate,
     function({ addUtilities }) {
       const newUtilities = {
         '.scrollbar-hide': {

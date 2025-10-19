@@ -15,8 +15,8 @@ const initializeTheme = () => {
       console.error('Failed to parse user settings:', e);
     }
   } else {
-    // Default to light mode on first run (ignore system preference)
-    darkMode = false;
+    // Respect system preference on first run
+    darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
   
   // Apply theme immediately before render

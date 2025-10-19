@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { INDENT_STEP_PX, applyIndentDelta, getBlocksForRange } from './indentUtils';
 import EditorToolbar from './EditorToolbar';
 import RichTextArea from './RichTextArea';
 import LatexView from './LatexView';
@@ -12,9 +13,10 @@ const EditorPage = () => {
   const [latexDocument, setLatexDocument] = useState<string>(buildLatexDocument(content));
   const { insertMathDelimiters } = useInlineMath();
   const editorRef = useRef<HTMLDivElement>(null);
+  const latexTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   
-  // State to store the execFormatCommand function from the toolbar
-  const [execFormatCommand, setExecFormatCommand] = useState<((command: string, value?: string) => void) | null>(null);
+  // Ref to store the execFormatCommand function from the toolbar
+  const execFormatCommandRef = useRef<((command: string, value?: string) => void) | null>(null);
 
   // Update latex document whenever content changes
   const handleContentChange = (newContent: string) => {
@@ -24,7 +26,7 @@ const EditorPage = () => {
 
   // Callback to receive the execFormatCommand function from the toolbar
   const handleFormatCommandReady = (formatCommand: (command: string, value?: string) => void) => {
-    setExecFormatCommand(() => formatCommand);
+    execFormatCommandRef.current = formatCommand;
   };
 
   // Toggle raw LaTeX view
@@ -46,14 +48,15 @@ const EditorPage = () => {
       }
     } catch (_e) {
       // If parsing fails, keep LaTeX text without breaking the UI
+      console.error('Failed to parse LaTeX:', _e);
       setLatexDocument(updatedLatex);
     }
   };
 
   // Callback for when a new list is created to fix cursor
   const handleNewListCreated = () => {
-    // Use a slightly longer timeout to ensure DOM changes are complete
-    setTimeout(() => {
+    // Use RAF to ensure DOM changes are complete
+    requestAnimationFrame(() => {
       if (!editorRef.current) return;
 
       // Handle both ordered and unordered lists
@@ -104,15 +107,42 @@ const EditorPage = () => {
           firstItem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         }
       }
-    }, 50); // Longer delay to ensure all DOM manipulations are complete
+    });
   };
 
   const handleIndent = () => {
-    document.execCommand('indent');
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!editorRef.current.contains(range.commonAncestorContainer)) return;
+    const saved = range.cloneRange();
+    const blocks = getBlocksForRange(range, editorRef.current);
+    if (blocks.length === 0) return;
+    applyIndentDelta(blocks, INDENT_STEP_PX);
+    selection.removeAllRanges();
+    selection.addRange(saved);
+    // Trigger change and make undoable via input event
+    const event = new Event('input', { bubbles: true });
+    editorRef.current.dispatchEvent(event);
   };
 
   const handleOutdent = () => {
-    document.execCommand('outdent');
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!editorRef.current.contains(range.commonAncestorContainer)) return;
+    const saved = range.cloneRange();
+    const blocks = getBlocksForRange(range, editorRef.current);
+    if (blocks.length === 0) return;
+    applyIndentDelta(blocks, -INDENT_STEP_PX);
+    selection.removeAllRanges();
+    selection.addRange(saved);
+    const event = new Event('input', { bubbles: true });
+    editorRef.current.dispatchEvent(event);
   };
 
   // Insert table at cursor position
@@ -177,10 +207,7 @@ const EditorPage = () => {
           onFormatCommandReady={handleFormatCommandReady}
           onApplyLatexFormat={(cmd, fmtValue) => {
             // Apply LaTeX formatting to selection in LatexView's textarea
-            const textarea = document.querySelector('textarea') as HTMLTextAreaElement | null;
-            // Fallback: any textarea inside LatexView
-            const fallback = document.querySelector('.font-mono') as HTMLTextAreaElement | null;
-            const el = textarea || fallback;
+            const el = latexTextareaRef.current;
             if (!el) return;
             const start = el.selectionStart;
             const end = el.selectionEnd;
@@ -248,11 +275,10 @@ const EditorPage = () => {
             // restore selection to end of wrapped
             const pos = start + wrapped.length;
             requestAnimationFrame(() => {
-              const el2 = textarea || fallback;
-              if (el2) {
-                el2.focus();
-                el2.setSelectionRange(pos, pos);
-              }
+              const el2 = latexTextareaRef.current;
+              if (!el2) return;
+              el2.focus();
+              el2.setSelectionRange(pos, pos);
             });
           }}
         />
@@ -263,11 +289,11 @@ const EditorPage = () => {
               content={content}
               onChange={handleContentChange}
               editorRef={editorRef}
-              onFormatCommand={execFormatCommand || undefined}
+              onFormatCommand={(cmd, fmtValue) => execFormatCommandRef.current?.(cmd, fmtValue)}
             />
           </div>
         ) : (
-          <LatexView latexDocument={latexDocument} onChange={handleLatexChange} />
+          <LatexView latexDocument={latexDocument} onChange={handleLatexChange} textareaRef={latexTextareaRef} />
         )}
       </main>
     </div>

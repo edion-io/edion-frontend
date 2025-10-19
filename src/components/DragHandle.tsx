@@ -26,16 +26,26 @@ export const DRAG_HANDLE_BUTTON_CLASSES = [
 ].join(' ');
 
 const DragHandle: React.FC<DragHandleProps> = ({ paneType, isDragging, onDragStart, onDragEnd, onKeySwap }) => {
+  const ariaKeyShortcuts = [
+    ...(onKeySwap ? ['Enter', 'Space', 'ArrowLeft', 'ArrowRight'] : []),
+    ...(onDragEnd ? ['Escape'] : []),
+  ].join(' ') || undefined;
+
   return (
     <button
-      className={DRAG_HANDLE_BUTTON_CLASSES + ' cursor-grab active:cursor-grabbing'}
+      className={`${DRAG_HANDLE_BUTTON_CLASSES} cursor-grab active:cursor-grabbing`}
       draggable
       onDragStart={(e) => {
         // Indicate this is a move operation to avoid the browser's green plus badge
-        try { e.dataTransfer.effectAllowed = 'move'; } catch (_e) {}
+        try { e.dataTransfer.effectAllowed = 'move'; } catch (_e) {
+          if (import.meta.env.DEV) {
+            // Some environments may throw when setting effectAllowed
+            console.warn('DragHandle: unable to set effectAllowed to move');
+          }
+        }
         e.dataTransfer.setData('text/pane', paneType);
-const img = new Image();
-img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+        const img = new Image();
+        img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
         try {
           e.dataTransfer.setDragImage(img, 0, 0);
         } catch (err) {
@@ -50,7 +60,7 @@ img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
       }}
       title="Drag to swap panes"
       aria-label={`Drag ${paneType} pane`}
-      aria-keyshortcuts="Enter Space ArrowLeft ArrowRight Escape"
+      aria-keyshortcuts={ariaKeyShortcuts}
       onKeyDown={(e) => {
         // Enable keyboard swapping: Enter/Space toggles, Arrow keys move toward side, Escape cancels drag state
         if (e.key === 'Enter' || e.key === ' ') {

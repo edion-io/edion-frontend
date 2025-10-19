@@ -16,14 +16,15 @@ interface ResizableHandleProps
   withHandle?: boolean
 }
 
-const ResizableHandle = React.forwardRef<
-  React.ElementRef<typeof PanelResizeHandlePrimitive>,
-  ResizableHandleProps
->(({ className, withHandle = false, ...props }, _ref) => (
+// Accessible, pretty handle with larger hit area and hover/active feedback
+const HANDLE_BASE_CLASSES =
+  "relative group flex select-none items-center justify-center bg-transparent transition-[background,transform,opacity] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[panel-group-direction=vertical]:h-3 data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:py-2 data-[panel-group-direction=horizontal]:w-3 data-[panel-group-direction=horizontal]:cursor-col-resize data-[panel-group-direction=vertical]:cursor-row-resize"
+
+const ResizableHandle = ({ className, withHandle = false, ...props }: ResizableHandleProps) => (
   <PanelResizeHandlePrimitive
     className={cn(
       // Accessible, pretty handle with larger hit area and hover/active feedback
-      "relative group flex select-none items-center justify-center bg-transparent transition-[background,transform,opacity] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[panel-group-direction=vertical]:h-3 data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:py-2 data-[panel-group-direction=horizontal]:w-3 data-[panel-group-direction=horizontal]:cursor-col-resize data-[panel-group-direction=vertical]:cursor-row-resize",
+      HANDLE_BASE_CLASSES,
       className
     )}
     {...props}
@@ -57,7 +58,7 @@ const ResizableHandle = React.forwardRef<
       </div>
     ) : null}
   </PanelResizeHandlePrimitive>
-))
+)
 ResizableHandle.displayName = "ResizableHandle"
 
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle }
