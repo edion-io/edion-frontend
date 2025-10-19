@@ -9,6 +9,8 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
 
   // Track per-field undo handlers without mutating DOM nodes
   const undoHandlersRef = useRef<WeakMap<HTMLElement, (e: KeyboardEvent) => void>>(new WeakMap());
+  // Track per-field input listeners used to clear pending delete state
+  const pendingDeleteInputHandlersRef = useRef<WeakMap<HTMLElement, (e: Event) => void>>(new WeakMap());
   interface MathFieldElement extends HTMLElement { value?: string }
 
   /**
@@ -86,6 +88,16 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
       undoHandlersRef.current.delete(mathField);
     }
 
+    // Clean up any pending delete input listener for this field
+    const inputHandler = pendingDeleteInputHandlersRef.current.get(mathField);
+    if (inputHandler) {
+      mathField.removeEventListener('input', inputHandler);
+      pendingDeleteInputHandlersRef.current.delete(mathField);
+    }
+    if (emptyMathFieldRef.current === mathField) {
+      emptyMathFieldRef.current = null;
+    }
+
     const nextSibling = mathField.nextSibling;
     const prevSibling = mathField.previousSibling;
     
@@ -115,21 +127,6 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
     mathField.remove();
     focusEditor();
   }, [focusEditor]);
-
-  /**
-   * Position cursor after a node and insert text
-   */
-  const positionCursorAndInsert = (node: Node, text: string) => {
-    const range = document.createRange();
-    const selection = window.getSelection();
-    if (!selection) return;
-
-    range.setStartAfter(node);
-    range.setEndAfter(node);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    document.execCommand('insertText', false, text);
-  };
 
   /**
    * Initialize a newly created math field and set up cursor position
@@ -445,7 +442,18 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
           
           // If this is the first delete on an empty field
           if (emptyMathFieldRef.current !== mathField) {
-            
+            // If another field was pending deletion, remove its listener and clear styles
+            const previousPending = emptyMathFieldRef.current;
+            if (previousPending && previousPending !== mathField) {
+              const prevHandler = pendingDeleteInputHandlersRef.current.get(previousPending);
+              if (prevHandler) {
+                previousPending.removeEventListener('input', prevHandler);
+                pendingDeleteInputHandlersRef.current.delete(previousPending);
+              }
+              previousPending.style.border = '';
+              previousPending.style.backgroundColor = '';
+            }
+
             emptyMathFieldRef.current = mathField;
             
             // Add a visual indicator that the field is pending deletion
@@ -453,15 +461,17 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
             mathField.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
             
             // Clear the pending state if the user starts typing
-            const clearPendingState = () => {
+            const clearPendingState: (e: Event) => void = () => {
               if (emptyMathFieldRef.current === mathField) {
                 mathField.style.border = '';
                 mathField.style.backgroundColor = '';
                 emptyMathFieldRef.current = null;
               }
               mathField.removeEventListener('input', clearPendingState);
+              pendingDeleteInputHandlersRef.current.delete(mathField);
             };
             mathField.addEventListener('input', clearPendingState);
+            pendingDeleteInputHandlersRef.current.set(mathField, clearPendingState);
           } else {
             // This is the second delete, remove the field
             removeMathField(mathField);
@@ -472,6 +482,11 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
           if (emptyMathFieldRef.current === mathField) {
             mathField.style.border = '';
             mathField.style.backgroundColor = '';
+            const existing = pendingDeleteInputHandlersRef.current.get(mathField);
+            if (existing) {
+              mathField.removeEventListener('input', existing);
+              pendingDeleteInputHandlersRef.current.delete(mathField);
+            }
             emptyMathFieldRef.current = null;
           }
         }
@@ -557,6 +572,20 @@ export const useInlineMath = (editorRef?: React.RefObject<HTMLElement>) => {
     document.addEventListener('keydown', handleMathFieldDelete);
     return () => document.removeEventListener('keydown', handleMathFieldDelete);
   }, [handleMathFieldDelete]);
+
+  // Ensure any pending delete listener on the active field is removed on unmount
+  useEffect(() => {
+    return () => {
+      const field = emptyMathFieldRef.current as HTMLElement | null;
+      if (field) {
+        const handler = pendingDeleteInputHandlersRef.current.get(field);
+        if (handler) {
+          field.removeEventListener('input', handler);
+          pendingDeleteInputHandlersRef.current.delete(field);
+        }
+      }
+    };
+  }, []);
   
   return {
     insertMathDelimiters,

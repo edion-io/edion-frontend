@@ -203,6 +203,7 @@ const processNode = (
         const hasMarkerItalic = element.classList.contains('marker-italic');
         const hasMarkerUnderline = element.classList.contains('marker-underline');
         const markerColor = (element as HTMLElement).style.getPropertyValue('--marker-color');
+        const normalizedMarkerHex = markerColor ? normalizeColor(markerColor).replace('#', '') : '';
         
         if (hasMarkerBold || hasMarkerItalic || hasMarkerUnderline) {
           // Use LaTeX's \item[custom] feature to specify formatted counters
@@ -219,15 +220,15 @@ const processNode = (
           }
           
           if (markerColor) {
-            // ensure hex or valid color
-            callback(`\\item[\\textcolor{${markerColor}}{${markerFormat}.}] `, false, [], listContext, true);
+            // Use normalized HTML hex color for LaTeX
+            callback(`\\item[\\textcolor[HTML]{${normalizedMarkerHex}}{${markerFormat}.}] `, false, [], listContext, true);
           } else {
             callback(`\\item[${markerFormat}.] `, false, [], listContext, true);
           }
         } else {
           // Standard numbered list item, with optional color
           if (markerColor) {
-            callback(`\\item[\\textcolor{${markerColor}}{\\arabic*.}] `, false, [], listContext, true);
+            callback(`\\item[\\textcolor[HTML]{${normalizedMarkerHex}}{\\arabic*.}] `, false, [], listContext, true);
           } else {
             callback('\\item ', false, [], listContext, true);
           }
@@ -290,14 +291,16 @@ const processNode = (
     let colorPrefix = '';
     let colorSuffix = '';
     
-    if (textColorAttr && rgbToHex(normalizeColor(textColorAttr)).toLowerCase() !== '#000000') {
-      const hexColor = rgbToHex(normalizeColor(textColorAttr));
-      colorPrefix += `\\textcolor{${hexColor}}{`;
-      colorSuffix = `}${colorSuffix}`;
+    if (textColorAttr) {
+      const hexColor = rgbToHex(textColorAttr).toLowerCase();
+      if (hexColor !== '#000000') {
+        colorPrefix += `\\textcolor{${hexColor}}{`;
+        colorSuffix = `}${colorSuffix}`;
+      }
     }
     
     if (bgColorAttr && bgColorAttr !== 'rgba(0, 0, 0, 0)' && bgColorAttr !== 'transparent') {
-      const hexColor = rgbToHex(normalizeColor(bgColorAttr)).toLowerCase();
+      const hexColor = rgbToHex(bgColorAttr).toLowerCase();
       const colorName = registerHighlightColor ? registerHighlightColor(hexColor) : `hlcolor${hexColor.replace('#', '')}`;
       // Scope the highlight color locally to the highlighted region
       colorPrefix += `{\\sethlcolor{${colorName}}\\hl{`;
@@ -393,7 +396,7 @@ const processTableContent = (
       if (i < headerCells.length - 1) {
         callback(' & ', false, [], null, true);
       } else {
-        callback(' \\ \\hline\n', false, [], null, true);
+        callback(' \\\\ \\hline\n', false, [], null, true);
       }
     }
   }
@@ -413,7 +416,7 @@ const processTableContent = (
       if (j < cells.length - 1) {
         callback(' & ', false, [], null, true);
       } else {
-        callback(' \\ \\hline\n', false, [], null, true);
+        callback(' \\\\ \\hline\n', false, [], null, true);
       }
     }
   }
@@ -435,15 +438,6 @@ const escapeLatexSpecialChars = (text: string): string => {
     .replace(/\^/g, '\\textasciicircum{}')
     .replace(/%/g, '\\%');
 };
-
-/**
- * Converts RGB color value to hex format
- * @param rgb RGB color as string (e.g., 'rgb(255, 0, 0)')
- * @returns Hex color (e.g., '#FF0000')
- */
-const rgbToHex = (rgb: string): string => {
-  return normalizeColor(rgb);
-}; 
 
 /** Normalize CSS color strings into an uppercase 6-digit hex string with leading '#'. */
 const normalizeColor = (value: string): string => {
@@ -487,4 +481,9 @@ const normalizeColor = (value: string): string => {
   }
 
   return '#000000';
+};
+
+/** Convert a CSS color string to a 6-digit hex string with leading '#'. */
+const rgbToHex = (value: string): string => {
+  return normalizeColor(value);
 };

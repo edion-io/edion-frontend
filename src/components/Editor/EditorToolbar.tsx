@@ -723,6 +723,263 @@ const EditorToolbar = ({
     );
   };
   
+  // Resolve mixed formatting by removing and re-applying a command uniformly
+  const resolveMixedFormatting = (
+    selection: Selection,
+    command: string,
+    helpers: {
+      getLegacyCommandState: (cmd: string) => boolean;
+      execLegacyCommand: (cmd: string, value?: string) => boolean;
+      updateFormatStates: () => void;
+      editorEl: HTMLElement | null;
+    }
+  ): boolean => {
+    const { getLegacyCommandState, execLegacyCommand, updateFormatStates, editorEl } = helpers;
+    if (!['bold', 'italic', 'underline'].includes(command)) return false;
+    let attempts = 0;
+    while (getLegacyCommandState(command) && attempts < 5) {
+      execLegacyCommand(command);
+      attempts++;
+    }
+    execLegacyCommand(command);
+    updateFormatStates();
+    if (editorEl) {
+      const event = new Event('input', { bubbles: true });
+      editorEl.dispatchEvent(event);
+    }
+    return true;
+  };
+
+  // Apply list marker color with transition control and reflow
+  const applyListMarkerColor = (listItem: HTMLElement, value?: string) => {
+    const currentMarkerColor = listItem.style.getPropertyValue('--marker-color');
+    if (currentMarkerColor === value) {
+      listItem.style.removeProperty('--marker-color');
+      return;
+    }
+    listItem.classList.add('disable-marker-transition');
+    listItem.style.setProperty('--marker-color', value || '#000000');
+    void listItem.offsetHeight; // Trigger reflow
+    requestAnimationFrame(() => {
+      listItem.classList.remove('disable-marker-transition');
+    });
+  };
+
+  // Handle list marker formatting logic, including desired state and early-return flows
+  const handleListMarkerFormatting = (
+    selection: Selection,
+    listItem: HTMLElement,
+    command: string,
+    value: string | undefined,
+    editorRef: React.RefObject<HTMLElement>,
+    helpers: {
+      getLegacyCommandState: (cmd: string) => boolean;
+      execLegacyCommand: (cmd: string, value?: string) => boolean;
+      updateFormatStates: () => void;
+      setIsBold: (next: boolean) => void;
+      setIsItalic: (next: boolean) => void;
+      setIsUnderline: (next: boolean) => void;
+      updateTextColor: (color: string) => void;
+    }
+  ): boolean => {
+    const { getLegacyCommandState, execLegacyCommand, updateFormatStates, setIsBold, setIsItalic, setIsUnderline, updateTextColor } = helpers;
+    const range = selection.getRangeAt(0);
+    const isFullySelected = isListItemFullySelected(selection) !== null;
+    const isAtBeginningWithoutSelection = range.collapsed && (
+      (range.startContainer === listItem && range.startOffset === 0) ||
+      (range.startContainer === listItem.firstChild && range.startOffset === 0)
+    );
+    const shouldFormatMarker = isFullySelected || isAtBeginningWithoutSelection;
+    if (!shouldFormatMarker) return false;
+
+    if (command === 'bold' || command === 'italic' || command === 'underline') {
+      const markerClass = `marker-${command}`;
+      const hasMarkerFormatting = listItem.classList.contains(markerClass);
+      let hasAnyContentFormatting = false;
+      let hasFullContentFormatting = false;
+
+      const selectedContent = range.cloneContents();
+      const tempDiv = document.createElement('div');
+      tempDiv.appendChild(selectedContent);
+      const formatTags = command === 'bold' ? ['B', 'STRONG'] : command === 'italic' ? ['I', 'EM'] : ['U'];
+      const foundFormatTags = formatTags.some(tag => tempDiv.querySelector(tag) !== null);
+      const queryCommandState = getLegacyCommandState(command);
+      hasAnyContentFormatting = foundFormatTags || queryCommandState;
+
+      if (queryCommandState) {
+        const walker = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT, null);
+        let hasUnformattedText = false;
+        let textNode: Node | null;
+        while ((textNode = walker.nextNode())) {
+          let parent = textNode.parentNode;
+          let isFormatted = false;
+          while (parent && parent !== tempDiv) {
+            if (formatTags.includes((parent as HTMLElement).nodeName)) {
+              isFormatted = true;
+              break;
+            }
+            parent = parent?.parentNode || null;
+          }
+          if (!isFormatted && textNode.textContent?.trim()) {
+            hasUnformattedText = true;
+          }
+        }
+        hasFullContentFormatting = !hasUnformattedText;
+        const isFullListItemSelection = isListItemFullySelected(selection) !== null;
+        if (isFullListItemSelection && queryCommandState && !hasUnformattedText) {
+          hasFullContentFormatting = true;
+        }
+      } else {
+        hasFullContentFormatting = false;
+        const isFullListItemSelection = isListItemFullySelected(selection) !== null;
+        if (isFullListItemSelection && foundFormatTags) {
+          hasFullContentFormatting = true;
+        }
+      }
+
+      const isFullListItemSelection = isListItemFullySelected(selection) !== null;
+      const isCursorAtBeginningWithoutSelection = range.collapsed && (
+        (range.startContainer === listItem && range.startOffset === 0) ||
+        (range.startContainer === listItem.firstChild && range.startOffset === 0)
+      );
+      const decision = computeDesiredFormattingState({
+        hasMarkerFormatting,
+        hasAnyContentFormatting,
+        hasFullContentFormatting,
+        queryCommandState,
+        isFullListItemSelection,
+        isCursorAtBeginningWithoutSelection
+      });
+      const desiredFormattingState = decision.desiredFormattingState;
+      hasFullContentFormatting = decision.hasFullContentFormatting;
+
+      if (desiredFormattingState) {
+        listItem.classList.add(markerClass);
+      } else {
+        listItem.classList.remove(markerClass);
+      }
+
+      const needsContentToggle = (desiredFormattingState && !hasFullContentFormatting) || (!desiredFormattingState && hasAnyContentFormatting);
+      if (needsContentToggle) {
+        if (desiredFormattingState && hasAnyContentFormatting && !hasFullContentFormatting) {
+          const handled = resolveMixedFormatting(selection, command, {
+            getLegacyCommandState,
+            execLegacyCommand,
+            updateFormatStates,
+            editorEl: editorRef.current
+          });
+          if (handled) return true; // early return handled
+        }
+      } else {
+        switch (command) {
+          case 'bold':
+            setIsBold(desiredFormattingState);
+            break;
+          case 'italic':
+            setIsItalic(desiredFormattingState);
+            break;
+          case 'underline':
+            setIsUnderline(desiredFormattingState);
+            break;
+        }
+        updateFormatStates();
+        if (editorRef.current) {
+          const event = new Event('input', { bubbles: true });
+          editorRef.current.dispatchEvent(event);
+        }
+        return true;
+      }
+    } else if (command === 'foreColor') {
+      applyListMarkerColor(listItem, value);
+    }
+
+    if (isAtBeginningWithoutSelection && command === 'foreColor') {
+      updateTextColor(value || '#000000');
+      updateFormatStates();
+      if (editorRef.current) {
+        const event = new Event('input', { bubbles: true });
+        editorRef.current.dispatchEvent(event);
+      }
+      return true;
+    }
+
+    if (['bold', 'italic', 'underline'].includes(command) && isAtBeginningWithoutSelection) {
+      switch (command) {
+        case 'bold':
+          setIsBold(listItem.classList.contains('marker-bold'));
+          break;
+        case 'italic':
+          setIsItalic(listItem.classList.contains('marker-italic'));
+          break;
+        case 'underline':
+          setIsUnderline(listItem.classList.contains('marker-underline'));
+          break;
+      }
+      updateFormatStates();
+      if (editorRef.current) {
+        const event = new Event('input', { bubbles: true });
+        editorRef.current.dispatchEvent(event);
+      }
+      return true;
+    }
+    return false;
+  };
+
+  // Sync UI format states after a content command executes
+  const syncFormatStatesAfterCommand = (
+    command: string,
+    selection: Selection | null,
+    value: string | undefined,
+    helpers: {
+      getLegacyCommandState: (cmd: string) => boolean;
+      setIsBold: (next: boolean) => void;
+      setIsItalic: (next: boolean) => void;
+      setIsUnderline: (next: boolean) => void;
+      updateTextColor: (color: string) => void;
+      updateHighlightColor: (color: string) => void;
+      selectionHasUnderline: () => boolean;
+      scheduleSynchronizeUnderlineColor: (color: string) => void;
+      updateFormatStates: () => void;
+      editorEl: HTMLElement | null;
+    }
+  ) => {
+    const { getLegacyCommandState, setIsBold, setIsItalic, setIsUnderline, updateTextColor, updateHighlightColor, selectionHasUnderline, scheduleSynchronizeUnderlineColor, updateFormatStates, editorEl } = helpers;
+    switch (command) {
+      case 'bold': {
+        const boldState = getLegacyCommandState(command);
+        setIsBold(boldState);
+        break;
+      }
+      case 'italic': {
+        const italicState = getLegacyCommandState(command);
+        setIsItalic(italicState);
+        break;
+      }
+      case 'underline': {
+        const underlineState = getLegacyCommandState(command);
+        setIsUnderline(underlineState);
+        break;
+      }
+      case 'foreColor': {
+        const nextColor = value || '#000000';
+        updateTextColor(nextColor);
+        if (selectionHasUnderline()) {
+          scheduleSynchronizeUnderlineColor(nextColor);
+        }
+        break;
+      }
+      case 'hiliteColor': {
+        updateHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
+        break;
+      }
+    }
+    updateFormatStates();
+    if (editorEl) {
+      const event = new Event('input', { bubbles: true });
+      editorEl.dispatchEvent(event);
+    }
+  };
+  
   // Modify execFormatCommand to only focus when necessary for text operations
   const execFormatCommand = (command: string, value?: string) => {
     if (!editorRef.current) {
@@ -754,13 +1011,9 @@ const EditorToolbar = ({
     
     // Enhanced list item formatting logic for all formatting commands
     let listItem: HTMLElement | null = null;
-    let shouldFormatMarker = false;
     const selection = window.getSelection();
-    
     if (selection && ['bold', 'italic', 'underline', 'foreColor'].includes(command)) {
-      // First, find if we're in a list item
       let node = selection.anchorNode;
-      
       while (node && node !== editorRef.current) {
         if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName === 'LI') {
           listItem = node as HTMLElement;
@@ -768,291 +1021,19 @@ const EditorToolbar = ({
         }
         node = node.parentNode;
       }
-      
-      if (listItem) {
-        const range = selection.getRangeAt(0);
-        
-        // Check if entire list item is selected
-        const isFullySelected = isListItemFullySelected(selection) !== null;
-        
-        // Check if cursor is at the beginning with no selection
-        const isAtBeginningWithoutSelection = range.collapsed && 
-          ((range.startContainer === listItem && range.startOffset === 0) ||
-           (range.startContainer === listItem.firstChild && range.startOffset === 0));
-        
-        // Format the marker if:
-        // 1. The entire list item is selected, OR
-        // 2. The cursor is at the beginning without any selection
-        shouldFormatMarker = isFullySelected || isAtBeginningWithoutSelection;
-      }
     }
-    
-    // Handle list marker formatting for all supported commands
-    if (listItem && shouldFormatMarker) {
-      // For formatting commands on fully selected list items, we want to make both marker and content consistent
-      // Instead of just toggling, we need to determine the desired state
-      let desiredFormattingState = false;
-      
-      // Handle different command types
-      if (command === 'bold' || command === 'italic' || command === 'underline') {
-        const markerClass = `marker-${command}`;
-        const hasMarkerFormatting = listItem.classList.contains(markerClass);
-        
-        // Check for content formatting - need to detect partial formatting too
-        let hasAnyContentFormatting = false;
-        let hasFullContentFormatting = false;
-        
-        // Get the current selection range
-        const range = selection.getRangeAt(0);
-        
-        // Check if there's any formatting in the selected content
-        const selectedContent = range.cloneContents();
-        const tempDiv = document.createElement('div');
-        tempDiv.appendChild(selectedContent);
-        
-        // Look for formatting tags in the selected content
-        const formatTags = command === 'bold' ? ['B', 'STRONG'] : 
-                          command === 'italic' ? ['I', 'EM'] : 
-                          ['U'];
-        
-        const foundFormatTags = formatTags.some(tag => 
-          tempDiv.querySelector(tag) !== null
-        );
-        
-        // Also check if the selection itself has formatting applied
-        const queryCommandState = getLegacyCommandState(command);
-        
-        hasAnyContentFormatting = foundFormatTags || queryCommandState;
-        
-        // To check for full formatting, we need to see if the entire selection is formatted
-        // This is tricky with contentEditable, so we'll use a heuristic:
-        // If queryCommandState is true AND we don't find any unformatted text nodes, assume full formatting
-        if (queryCommandState) {
-          // Create a range for just text content to see if there are unformatted parts
-          const walker = document.createTreeWalker(
-            tempDiv,
-            NodeFilter.SHOW_TEXT,
-            null
-          );
-          
-          let hasUnformattedText = false;
-          let textNode: Node | null;
-          const textNodeDetails: Array<{ text: string | null; isFormatted: boolean; parentNodeName?: string; hasContent?: boolean }> = [];
-          while ((textNode = walker.nextNode())) {
-            // Check if this text node is inside a formatting tag
-            let parent = textNode.parentNode;
-            let isFormatted = false;
-            while (parent && parent !== tempDiv) {
-              if (formatTags.includes(parent.nodeName)) {
-                isFormatted = true;
-                break;
-              }
-              parent = parent.parentNode;
-            }
-            
-            textNodeDetails.push({
-              text: textNode.textContent,
-              isFormatted,
-              parentNodeName: textNode.parentNode?.nodeName,
-              hasContent: !!textNode.textContent?.trim()
-            });
-            
-            if (!isFormatted && textNode.textContent?.trim()) {
-              hasUnformattedText = true;
-            }
-          }
-          
-          hasFullContentFormatting = !hasUnformattedText;
-          
-          // Additional check: if the entire list item content is selected and queryCommandState is true,
-          // we should trust queryCommandState more than our tag analysis for full selections
-          // BUT only if we don't have unformatted text (mixed formatting case)
-          const isFullListItemSelection = isListItemFullySelected(selection) !== null;
-          if (isFullListItemSelection && queryCommandState && !hasUnformattedText) {
-            // For full list item selections, if queryCommandState is true AND we don't have unformatted text,
-            // trust queryCommandState. The browser might be using inline styles or other formatting methods
-            // that our tag-based analysis doesn't detect
-            hasFullContentFormatting = true;
-          }
-          
-        } else {
-          // If queryCommandState is false, check if there might still be formatting tags
-          // This can happen in some edge cases
-          hasFullContentFormatting = false;
-          
-          // But for full list item selections, if we found format tags, consider it formatted
-          const isFullListItemSelection = isListItemFullySelected(selection) !== null;
-          if (isFullListItemSelection && foundFormatTags) {
-            hasFullContentFormatting = true;
-          }
-        }
-        
-        // Determine desired state using a clear linear decision sequence
-        // 1) compute all booleans first (done above)
-        // 2) set default rule, 3) apply cursor-at-beginning override, 4) final override independent of desired state
-        const isFullListItemSelection = isListItemFullySelected(selection) !== null;
-        const isCursorAtBeginningWithoutSelection = range.collapsed && ((
-          (range.startContainer === listItem && range.startOffset === 0) ||
-          (range.startContainer === listItem.firstChild && range.startOffset === 0)
-        ));
 
-        // Use pure helper to compute decision with linear rules
-        const decision = computeDesiredFormattingState({
-          hasMarkerFormatting,
-          hasAnyContentFormatting,
-          hasFullContentFormatting,
-          queryCommandState,
-          isFullListItemSelection,
-          isCursorAtBeginningWithoutSelection
-        });
-        desiredFormattingState = decision.desiredFormattingState;
-        hasFullContentFormatting = decision.hasFullContentFormatting;
-        
-        // Debug the decision values
-
-        
-        // Apply marker formatting based on desired state
-        if (desiredFormattingState) {
-          listItem.classList.add(markerClass);
-        } else {
-          listItem.classList.remove(markerClass);
-        }
-        
-        // For content formatting, we need to apply the desired state
-        // If we want formatting but content is not fully formatted, OR
-        // if we want no formatting but content has any formatting, then toggle
-        const needsContentToggle = 
-          (desiredFormattingState && !hasFullContentFormatting) ||
-          (!desiredFormattingState && hasAnyContentFormatting);
-        
-        if (needsContentToggle) {
-          // Continue to execCommand below
-          
-          // Special handling for mixed formatting - if we want to ADD formatting but there's mixed content,
-          // we need to handle this more carefully than just using execCommand
-          if (desiredFormattingState && hasAnyContentFormatting && !hasFullContentFormatting) {
-            // For mixed formatting, we need to:
-            // 1. Remove all existing formatting of this type
-            // 2. Apply formatting to the entire selection
-            
-            if (['bold', 'italic', 'underline'].includes(command)) {
-              // First, remove all existing formatting of this type
-              let attempts = 0;
-              while (getLegacyCommandState(command) && attempts < 5) {
-                execLegacyCommand(command);
-                attempts++;
-              }
-              // Then apply formatting to ensure everything is formatted
-              execLegacyCommand(command);
-              
-              // Update format states
-              updateFormatStates();
-              
-              // Trigger input event to ensure changes are saved
-              if (editorRef.current) {
-                const event = new Event('input', { bubbles: true });
-                editorRef.current.dispatchEvent(event);
-              }
-              return; // Skip the normal execCommand below
-            }
-          }
-          
-
-        } else {
-          // Update states to reflect the current formatting
-          switch (command) {
-            case 'bold':
-              setIsBold(desiredFormattingState);
-              break;
-            case 'italic':
-              setIsItalic(desiredFormattingState);
-              break;
-            case 'underline':
-              setIsUnderline(desiredFormattingState);
-              break;
-          }
-
-          // Update format states
-          updateFormatStates();
-          
-          // Trigger input event to ensure changes are saved
-          if (editorRef.current) {
-            const event = new Event('input', { bubbles: true });
-            editorRef.current.dispatchEvent(event);
-          }
-          return; // Don't execute the content command since content is already in desired state
-        }
-      } else if (command === 'foreColor') {
-        // Handle text color for markers using CSS custom properties
-        const currentMarkerColor = listItem.style.getPropertyValue('--marker-color');
-        
-        if (currentMarkerColor === value) {
-          // If same color, remove the custom property (reset to default)
-          listItem.style.removeProperty('--marker-color');
-        } else {
-          // Temporarily disable marker transitions for immediate color change
-          listItem.classList.add('disable-marker-transition');
-          
-          // Set the new marker color
-          listItem.style.setProperty('--marker-color', value || '#000000');
-          
-          // Force a style recalculation to ensure immediate application
-          void listItem.offsetHeight; // Trigger reflow
-          
-          // Re-enable transitions after the DOM update is complete
-          requestAnimationFrame(() => {
-            listItem.classList.remove('disable-marker-transition');
-          });
-        }
-      }
-      
-      // For cursor at beginning without selection, don't execute the content command for colors
-      // Only format the marker
-      const range = selection.getRangeAt(0);
-      const isAtBeginningWithoutSelection = range.collapsed && 
-        ((range.startContainer === listItem && range.startOffset === 0) ||
-         (range.startContainer === listItem.firstChild && range.startOffset === 0));
-      
-      if (isAtBeginningWithoutSelection && command === 'foreColor') {
-        // Update states based on the command
-        updateTextColor(value || '#000000');
-
-        // Update format states
-        updateFormatStates();
-        
-        // Trigger input event to ensure changes are saved
-        if (editorRef.current) {
-          const event = new Event('input', { bubbles: true });
-          editorRef.current.dispatchEvent(event);
-        }
-        return; // Don't execute the content command
-      }
-      
-      // For bold/italic/underline, handle the existing logic
-      if (['bold', 'italic', 'underline'].includes(command) && isAtBeginningWithoutSelection) {
-        // Update states
-        switch (command) {
-          case 'bold':
-            setIsBold(listItem.classList.contains('marker-bold'));
-            break;
-          case 'italic':
-            setIsItalic(listItem.classList.contains('marker-italic'));
-            break;
-          case 'underline':
-            setIsUnderline(listItem.classList.contains('marker-underline'));
-            break;
-        }
-
-        // Update format states
-        updateFormatStates();
-        
-        // Trigger input event to ensure changes are saved
-        if (editorRef.current) {
-          const event = new Event('input', { bubbles: true });
-          editorRef.current.dispatchEvent(event);
-        }
-        return; // Don't execute the content command
-      }
+    if (selection && listItem) {
+      const handled = handleListMarkerFormatting(selection, listItem, command, value, editorRef, {
+        getLegacyCommandState,
+        execLegacyCommand,
+        updateFormatStates,
+        setIsBold,
+        setIsItalic,
+        setIsUnderline,
+        updateTextColor
+      });
+      if (handled) return;
     }
 
     // Execute command for the content (this will handle both marker and content when entire item is selected)
@@ -1064,46 +1045,19 @@ const EditorToolbar = ({
       const isEnabled = isLegacyCommandEnabled(command);
     }
 
-    // Update states
-    switch (command) {
-      case 'bold': {
-        const boldState = getLegacyCommandState(command);
-        setIsBold(boldState);
-        break;
-      }
-      case 'italic': {
-        const italicState = getLegacyCommandState(command);
-        setIsItalic(italicState);
-        break;
-      }
-      case 'underline': {
-        const underlineState = getLegacyCommandState(command);
-        setIsUnderline(underlineState);
-        break;
-      }
-      case 'foreColor':
-        updateTextColor(value || '#000000');
-        // Ensure underline color follows text color only when underline is active/present
-        {
-          const nextColor = value || '#000000';
-          if (selectionHasUnderline()) {
-            scheduleSynchronizeUnderlineColor(nextColor);
-          }
-        }
-        break;
-      case 'hiliteColor':
-        updateHighlightColor(value === 'transparent' ? 'transparent' : (value || 'transparent'));
-        break;
-    }
-
-    // Update format states
-    updateFormatStates();
-    
-    // Trigger input event to ensure changes are saved
-    if (editorRef.current) {
-      const event = new Event('input', { bubbles: true });
-      editorRef.current.dispatchEvent(event);
-    }
+    // Sync UI format states and trigger input event
+    syncFormatStatesAfterCommand(command, window.getSelection(), value, {
+      getLegacyCommandState,
+      setIsBold,
+      setIsItalic,
+      setIsUnderline,
+      updateTextColor,
+      updateHighlightColor,
+      selectionHasUnderline,
+      scheduleSynchronizeUnderlineColor,
+      updateFormatStates,
+      editorEl: editorRef.current
+    });
   };
 
   // Cleanup any pending debounced tasks on unmount
@@ -1640,7 +1594,7 @@ const EditorToolbar = ({
       editorEl.removeEventListener('blur', handleEditorBlur);
       editorEl.removeEventListener('input', handleEditorInput);
     };
-  }, [editorRef.current]);
+  }, [editorRef]);
   
   // Apply text color
   const applyTextColor = (color: string) => {

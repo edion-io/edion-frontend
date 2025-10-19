@@ -254,8 +254,15 @@ export default function useEditorSync(options: UseEditorSyncOptions): UseEditorS
       const doc = buildLatexDocument(editorContent);
       skipPopulateFromEditorRef.current = true;
       options.onLatexChange?.(doc);
-    } catch (_e) {
-      // Ignore conversion failures during typing
+    } catch (error) {
+      // Log conversion failures during typing for debugging without interrupting user input
+      console.error('LaTeX build failed during typing', {
+        error,
+        editorContentLength: editorContent ? editorContent.length : 0,
+        showEditorSplit: options.showEditorSplit,
+        suppressLatexSync: suppressLatexSyncRef.current,
+        skipPopulateFromEditor: skipPopulateFromEditorRef.current,
+      });
     }
   }, [editorContent, options.showEditorSplit, options.onLatexChange]);
 

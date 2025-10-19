@@ -159,15 +159,22 @@ Defined in `src/App.tsx`:
 - Port defaults to 8080 in dev server configuration.
 
 ### Backend API URL
-- Set the backend base URL using an environment variable. Supported names (in order): `VITE_API_URL`, `NEXT_PUBLIC_API_URL`, `REACT_APP_API_URL`.
+- Set the backend base URL via environment variables. The app checks these in order and uses the first non-empty value: `VITE_API_URL` → `NEXT_PUBLIC_API_URL` → `REACT_APP_API_URL`.
 - For Vite, add this to `.env` or `.env.local` in the project root:
 
 ```
 VITE_API_URL=http://127.0.0.1:5057
 ```
-
-- In development and test, if the variable is not set, the app falls back to `http://127.0.0.1:5057`.
-- In production-like modes, missing configuration will throw a clear error at runtime.
+- Mode definitions:
+  - Local development: `NODE_ENV === 'development'` or when running the Vite dev server (e.g., `npm run dev`).
+  - Test: `NODE_ENV === 'test'` (e.g., unit/integration tests running the app code).
+  - Production-like (production/CI/staging): `NODE_ENV === 'production'` or when running a built app (after `npm run build` and serving it).
+- Behavior:
+  - If none of the variables are set in local development, the app falls back to `http://127.0.0.1:5057`.
+  - If none are set in test, the behavior matches local development and falls back to `http://127.0.0.1:5057`.
+  - If none are set in production-like runs, the app throws a runtime error and does not attempt retries.
+- Example runtime error message developers will see: `Missing API base URL: set VITE_API_URL, NEXT_PUBLIC_API_URL, or REACT_APP_API_URL`.
+- The app performs a basic URL format validation and fails fast rather than attempting retries.
 - After changing env files, restart the dev server (`npm run dev`).
 
 ## Deployment

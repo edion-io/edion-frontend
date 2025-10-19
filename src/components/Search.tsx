@@ -11,7 +11,6 @@ import { showErrorToast } from '@/utils/toastUtils';
 
 const Search = () => {
   const [searchInput, setSearchInput] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -43,10 +42,8 @@ const Search = () => {
       let deterministic: string | null = null;
       try {
         deterministic = getDeterministicResponse(searchInput);
-        setError(null);
       } catch (err) {
         console.error("getDeterministicResponse failed", err);
-        setError(err instanceof Error ? err.message : "Unknown error");
         showErrorToast(
           "Couldn't generate a precise reply",
           "Showing a generic helper message instead."
@@ -185,12 +182,9 @@ const Search = () => {
                   maxHeight: '200px'
                 }}
                 aria-label="Search box"
-                aria-invalid={!!error}
-                aria-describedby={error ? 'search-error-message' : undefined}
                 value={searchInput}
                 onChange={(e) => {
                   setSearchInput(e.target.value);
-                  if (error) setError(null);
                   // Auto-adjust height
                   e.target.style.height = 'auto';
                   e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
@@ -240,16 +234,6 @@ const Search = () => {
             </div>
           </div>
         </div>
-        {error !== null && (
-          <div
-            id="search-error-message"
-            role="alert"
-            aria-live="polite"
-            className="mt-2 text-sm text-red-600 dark:text-red-400 px-1"
-          >
-            {error}
-          </div>
-        )}
       </form>
     </motion.div>
   );

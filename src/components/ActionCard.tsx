@@ -8,10 +8,15 @@ interface ActionCardProps {
   description: string;
   color?: string;
   delay?: number;
+  onClick?: () => void;
+  ariaLabel?: string;
+  ariaPressed?: boolean;
+  ariaExpanded?: boolean;
 }
 
-const ActionCard: React.FC<ActionCardProps> = ({ icon, title, description, color = 'gray', delay = 0 }) => {
+const ActionCard: React.FC<ActionCardProps> = ({ icon, title, description, color = 'gray', delay = 0, onClick, ariaLabel, ariaPressed, ariaExpanded }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const isInteractive = typeof onClick === 'function';
 
   return (
     <div 
@@ -21,7 +26,8 @@ const ActionCard: React.FC<ActionCardProps> = ({ icon, title, description, color
     >
       <motion.div 
         className={cn(
-          "flex items-start py-3 px-4 rounded-xl shadow-sm backdrop-blur-sm cursor-pointer w-full max-w-md",
+          "flex items-start py-3 px-4 rounded-xl shadow-sm backdrop-blur-sm w-full max-w-md",
+          isInteractive && "cursor-pointer",
           "border border-gray-200/30 dark:border-gray-800/50",
           "bg-white/80 hover:bg-white dark:bg-gray-900/50 dark:hover:bg-gray-900/80",
           "transition-all duration-300 ease-in-out"
@@ -33,7 +39,19 @@ const ActionCard: React.FC<ActionCardProps> = ({ icon, title, description, color
           scale: 1.02,
           transition: { duration: 0.3, ease: "easeOut" }
         }}
-        whileTap={{ scale: 0.98 }}
+        whileTap={isInteractive ? { scale: 0.98 } : undefined}
+        role={isInteractive ? "button" : undefined}
+        tabIndex={isInteractive ? 0 : undefined}
+        aria-label={ariaLabel}
+        aria-pressed={ariaPressed}
+        aria-expanded={ariaExpanded}
+        onClick={isInteractive ? () => onClick?.() : undefined}
+        onKeyDown={isInteractive ? (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick?.();
+          }
+        } : undefined}
       >
         <div className="flex-shrink-0 mr-4 pt-1">
           {typeof icon === 'string' ? (

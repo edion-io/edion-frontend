@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { INDENT_STEP_PX, applyIndentDelta, getBlocksForRange } from '../indentUtils';
 
@@ -14,21 +14,24 @@ describe('indent utils', () => {
         <div id="div1">A <span>nested</span> div</div>
       </div>
     </body></html>`);
-    // @ts-expect-error attach globals
-    global.window = dom.window as unknown as Window & typeof globalThis;
-    // @ts-expect-error attach globals
-    global.document = dom.window.document as unknown as Document;
+    (globalThis as any).window = dom.window as unknown as Window & typeof globalThis;
+    (globalThis as any).document = dom.window.document as unknown as Document;
     root = document.getElementById('root') as HTMLElement;
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).window;
+    delete (globalThis as any).document;
   });
 
   it('collects the nearest block when selection is collapsed', () => {
     const p1 = document.getElementById('p1') as HTMLElement;
     const range = document.createRange();
-    range.selectNodeContents(p1.firstChild as Node);
+    range.setStart(p1.firstChild as Node, 0);
     range.collapse(true);
     const blocks = getBlocksForRange(range, root);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0]).toBe(p1);
+    expect(blocks).toEqual([p1]);
   });
 
   it('collects multiple blocks for a multi-block selection', () => {
@@ -38,7 +41,8 @@ describe('indent utils', () => {
     range.setStart(p1.firstChild as Node, 0);
     range.setEnd(p2.firstChild as Node, 3);
     const blocks = getBlocksForRange(range, root);
-    expect(blocks).toEqual(expect.arrayContaining([p1, p2]));
+    expect(blocks).toHaveLength(2);
+    expect(blocks).toEqual([p1, p2]);
   });
 
   it('applies and removes indent via margin-left', () => {

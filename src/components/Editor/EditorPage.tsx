@@ -177,8 +177,63 @@ const EditorPage = () => {
     }
     tableHTML += '</tbody></table><p><br></p>'; // Add a new paragraph after the table for easier editing
     
-    // Insert table at current position
-    document.execCommand('insertHTML', false, tableHTML);
+    // Insert table at current position using Selection/Range API
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    // Ensure the selection is within the editor
+    if (!editorRef.current.contains(range.commonAncestorContainer)) return;
+
+    // Replace selection if any, otherwise insert at caret
+    if (!range.collapsed) {
+      range.deleteContents();
+    }
+
+    // Create a fragment safely from the HTML string
+    let fragment: DocumentFragment;
+    try {
+      if (typeof (range as any).createContextualFragment === 'function') {
+        fragment = (range as any).createContextualFragment(tableHTML);
+      } else {
+        const template = document.createElement('template');
+        template.innerHTML = tableHTML;
+        fragment = template.content;
+      }
+    } catch (_e) {
+      // Fallback to template parsing on any error
+      const template = document.createElement('template');
+      template.innerHTML = tableHTML;
+      fragment = template.content;
+    }
+
+    // Keep reference to the last node to restore caret after insertion
+    const lastNode = fragment.lastChild;
+
+    // Perform the insertion
+    range.insertNode(fragment);
+
+    // Restore/collapse selection so caret sits after the inserted content
+    if (lastNode) {
+      const afterRange = document.createRange();
+      if (lastNode.nodeType === Node.ELEMENT_NODE) {
+        const el = lastNode as Element;
+        if (el.lastChild) {
+          afterRange.setStartAfter(el.lastChild);
+        } else {
+          afterRange.setStart(el, el.childNodes.length);
+        }
+      } else {
+        afterRange.setStartAfter(lastNode);
+      }
+      afterRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(afterRange);
+      (lastNode as HTMLElement)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    } else {
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
     
     // Update content
     if (editorRef.current) {
@@ -211,7 +266,7 @@ const EditorPage = () => {
             if (!el) return;
             const start = el.selectionStart;
             const end = el.selectionEnd;
-            if (start == null || end == null) return;
+            if (start === null || end === null || start === undefined || end === undefined) return;
             const latexText = el.value;
             const selected = start === end ? '' : latexText.slice(start, end);
             let wrapped = selected;

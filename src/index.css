@@ -334,3 +334,8 @@
   width: auto !important;
   min-width: 20px !important;
 }
+
+.dark .rich-text-editor math-field {
+  border-color: rgb(39, 39, 42) !important; /* zinc-800 */
+  background-color: rgb(24, 24, 27) !important; /* zinc-900 */
+}

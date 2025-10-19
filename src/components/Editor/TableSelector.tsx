@@ -23,6 +23,11 @@ export const TableSelector = ({ onSelectTable }: TableSelectorProps) => {
     // Add 1 to rows and cols because arrays are 0-indexed
     const rows = hoveredCell.row + 1;
     const cols = hoveredCell.col + 1;
+    
+    if (rows <= 0 || cols <= 0) {
+      return;
+    }
+    
     try {
       onSelectTable(rows, cols);
     } finally {
@@ -54,6 +59,16 @@ export const TableSelector = ({ onSelectTable }: TableSelectorProps) => {
                     }`}
                     onMouseEnter={() => handleMouseEnter(rowIndex, colIndex)}
                     onClick={handleClick}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Insert ${rowIndex + 1} by ${colIndex + 1} table`}
+                    onFocus={() => handleMouseEnter(rowIndex, colIndex)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleClick();
+                      }
+                    }}
                   />
                 ))}
               </React.Fragment>

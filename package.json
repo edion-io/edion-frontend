@@ -52,7 +52,6 @@
     "@types/katex": "^0.16.7",
     "@types/slate": "^0.47.16",
     "@types/slate-react": "^0.50.0",
-    "@types/styled-components": "^5.1.34",
     "@types/uuid": "^10.0.0",
     "@udecode/plate-basic-marks": "^46.0.5",
     "@udecode/plate-common": "^41.0.13",

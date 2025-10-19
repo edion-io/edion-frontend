@@ -55,7 +55,7 @@ export const getBlocksForRange = (range: Range, root: HTMLElement): HTMLElement[
       },
     },
   );
-  let current = walker.currentNode as Element | null;
+  let current = walker.nextNode() as Element | null;
   while (current) {
     const el = current as HTMLElement;
     // Prefer the native intersectsNode if available (works well in jsdom/browsers)

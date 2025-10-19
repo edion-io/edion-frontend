@@ -168,9 +168,13 @@ const processInline = (input: string): string => {
       if (nextSpecial === -1) {
         pushEscaped(s.slice(i));
         break;
-      } else {
+      } else if (nextSpecial > i) {
         pushEscaped(s.slice(i, nextSpecial));
         i = nextSpecial;
+      } else {
+        // Unrecognized backslash sequence - push the backslash and advance
+        pushEscaped(s.slice(i, i + 1));
+        i++;
       }
     }
 
@@ -195,7 +199,57 @@ const parseTable = (block: string): string => {
   let cols = 0;
   if (colMatch) {
     const def = colMatch[1];
-    cols = (def.match(/c/g) || []).length;
+    // Count occurrences of standard column specifiers:
+    // - single-letter: l, r, c
+    // - block-style: p{...}, m{...}, b{...}
+    // Ignore separators/modifiers like '|', @{...}, >{...}, <{...}
+    const countTabularColumns = (definition: string): number => {
+      let index = 0;
+      let total = 0;
+
+      const skipGroup = (from: number): number => {
+        let depth = 0;
+        let j = from;
+        // assumes definition[from] === '{'
+        while (j < definition.length) {
+          const ch = definition[j];
+          if (ch === '{') depth++;
+          else if (ch === '}') {
+            depth--;
+            if (depth === 0) return j + 1;
+          }
+          j++;
+        }
+        return j;
+      };
+
+      while (index < definition.length) {
+        const ch = definition[index];
+        // Single-letter specifiers
+        if (ch === 'l' || ch === 'r' || ch === 'c') {
+          total++;
+          index++;
+          continue;
+        }
+        // Block-style specifiers p{...}, m{...}, b{...}
+        if ((ch === 'p' || ch === 'm' || ch === 'b') && definition[index + 1] === '{') {
+          total++;
+          index = skipGroup(index + 1);
+          continue;
+        }
+        // Modifiers to ignore: @{...}, >{...}, <{...}
+        if ((ch === '@' || ch === '>' || ch === '<') && definition[index + 1] === '{') {
+          index = skipGroup(index + 1);
+          continue;
+        }
+        // Ignore separators and whitespace (e.g., '|', '!', spaces)
+        index++;
+      }
+
+      return total;
+    };
+
+    cols = countTabularColumns(def);
   }
 
   // Split lines after first \\hline

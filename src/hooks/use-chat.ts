@@ -177,8 +177,14 @@ export const useChat = (userSettings: UserSettings) => {
         const apiBase = getApiBaseUrl();
         const addSessionUrl = joinUrl(apiBase, '/add_session');
         const r = await fetch(addSessionUrl);
+        if (!r.ok) {
+          throw new Error(`Failed to create session: ${r.status}`);
+        }
         const j = await r.json();
         sessionId = j.session_id;
+        if (!sessionId) {
+          throw new Error('Session ID not returned from server');
+        }
         const tabsWithSession = updatedTabs.map(tab => tab.id === activeTabId ? { ...tab, sessionId } : tab);
         setTabs(tabsWithSession);
         localStorage.setItem('chatTabs', JSON.stringify(tabsWithSession));
@@ -190,12 +196,17 @@ export const useChat = (userSettings: UserSettings) => {
       const resp = await fetch(chatUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, user_input: userText })
+        body: JSON.stringify({
+          session_id: sessionId,
+          message: userText,
+        }),
       });
-      const data = await resp.json();
-      const assistantText = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
-
+      if (!resp.ok) {
+        throw new Error(`Chat request failed: ${resp.status}`);
+      }
+      const assistantText = await resp.text();
       // If the assistant returns an exercise payload, open editor split with LaTeX content
+      let shouldSkipChatDisplay = false;
       try {
         const trimmed = assistantText.trim();
         const openTag = '<exercise>';
@@ -204,6 +215,7 @@ export const useChat = (userSettings: UserSettings) => {
           const latexPayload = trimmed.slice(openTag.length, trimmed.length - closeTag.length).trim();
           setShowEditorSplit(true);
           setEditorLatex(latexPayload);
+          shouldSkipChatDisplay = true;
         }
       } catch (e) {
         const failedPayload = typeof assistantText === 'string' ? assistantText.trim() : String(assistantText);
@@ -220,7 +232,7 @@ export const useChat = (userSettings: UserSettings) => {
               ...tab.messages,
               {
                 id: tab.messages.length + 1,
-                text: assistantText,
+                text: shouldSkipChatDisplay ? 'Exercise generated in editor.' : assistantText,
                 isUser: false,
               }
             ],
@@ -230,7 +242,7 @@ export const useChat = (userSettings: UserSettings) => {
       }));
 
       // Update chat history (last message)
-      const updatedHistory = chatHistory.map(chat => chat.id === activeTabId ? { ...chat, lastMessage: userText } : chat);
+      const updatedHistory = chatHistory.map(chat => chat.id === activeTabId ? { ...chat, lastMessage: assistantText } : chat);
       setChatHistory(updatedHistory);
       localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
     } catch (err) {
