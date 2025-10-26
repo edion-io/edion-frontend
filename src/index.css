@@ -202,6 +202,13 @@
   .theme-change-immediate {
     transition: none !important;
   }
+
+  /* Suppress default image/link drag visuals during pane swap */
+  .dragging-pane, .dragging-pane * {
+    -webkit-user-drag: none !important;
+    user-select: none !important;
+    cursor: grabbing !important;
+  }
   
   .theme-change-immediate svg,
   .theme-change-immediate path,
@@ -309,3 +316,26 @@
   }
 }
 
+/* Math field styling - truly responsive to content */
+.rich-text-editor math-field {
+  font-size: 0.8125rem; /* 13px at 16px base */
+  line-height: 1.1;
+  min-height: 1.125rem; /* 18px at 16px base */
+  height: auto !important;
+  max-height: none !important;
+  padding: 2px 4px !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 3px !important;
+  background-color: #f9fafb !important;
+  margin: 0 1px !important;
+  overflow: visible !important;
+  width: auto !important;
+  min-width: 20px !important;
+}
+
+.dark .rich-text-editor math-field {
+  border-color: rgb(39, 39, 42) !important; /* zinc-800 */
+  background-color: rgb(24, 24, 27) !important; /* zinc-900 */
+}

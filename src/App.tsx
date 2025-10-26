@@ -6,7 +6,7 @@ import Index from "./pages/Index";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
-import MathDemoPage from "./app/math-demo/page";
+import EditorPage from "./components/Editor/EditorPage";
 
 const queryClient = new QueryClient();
 
@@ -19,7 +19,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/math-editor" element={<MathDemoPage />} />
+          <Route path="/editor" element={<EditorPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

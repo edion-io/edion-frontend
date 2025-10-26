@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatTab, ChatHistoryItem, UserSettings } from '../types';
+import { getDeterministicResponse } from '../lib/intentMappings';
+import { getApiBaseUrl, joinUrl } from '../lib/config';
 import { showChatDeletedToast, showErrorToast } from '../utils/toastUtils';
 
 export const useChat = (userSettings: UserSettings) => {
@@ -14,6 +16,8 @@ export const useChat = (userSettings: UserSettings) => {
   const [activeTabId, setActiveTabId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [inputValue, setInputValue] = useState('');
+  const [showEditorSplit, setShowEditorSplit] = useState(false);
+  const [editorLatex, setEditorLatex] = useState<string | null>(null);
 
   // Load chat history from localStorage
   useEffect(() => {
@@ -102,38 +106,47 @@ export const useChat = (userSettings: UserSettings) => {
       localStorage.setItem('chatTabs', JSON.stringify([defaultTab]));
     }
     
+    // If navigation requested opening editor with LaTeX, honor it
+    const latexToOpen = initialState.openEditorWithLatex || initialState.latexContent;
+    if (latexToOpen && typeof latexToOpen === 'string') {
+      setShowEditorSplit(true);
+      setEditorLatex(latexToOpen);
+    }
     setIsLoading(false);
-  }, [initialState.selectedChatId, initialState.initialQuery]);
+  }, [initialState.selectedChatId, initialState.initialQuery, initialState.openEditorWithLatex, initialState.latexContent]);
 
-  // Handle form submission
-  const handleSubmit = useCallback((e: React.FormEvent) => {
+  // Handle form submission (calls backend)
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || !activeTabId) return;
 
+    const userText = inputValue;
+
+    // Append user message locally
     const updatedTabs = tabs.map(tab => {
       if (tab.id === activeTabId) {
-        const updatedMessages = [
-          ...tab.messages,
-          {
-            id: tab.messages.length + 1,
-            text: inputValue,
-            isUser: true,
-          }
-        ];
-        
         return {
           ...tab,
-          messages: updatedMessages,
+          messages: [
+            ...tab.messages,
+            {
+              id: tab.messages.length + 1,
+              text: userText,
+              isUser: true,
+            }
+          ],
         };
       }
       return tab;
     });
-    
     setTabs(updatedTabs);
     setInputValue('');
 
-    // Simulate AI response
-    setTimeout(() => {
+    // Try deterministic response first; if none, fall back to backend
+    const deterministic = getDeterministicResponse(userText);
+    if (deterministic) {
+      setShowEditorSplit(true);
+      setEditorLatex(deterministic);
       setTabs(prevTabs => prevTabs.map(tab => {
         if (tab.id === activeTabId) {
           return {
@@ -142,7 +155,7 @@ export const useChat = (userSettings: UserSettings) => {
               ...tab.messages,
               {
                 id: tab.messages.length + 1,
-                text: "I'm processing your request. How else can I assist you?",
+                text: deterministic,
                 isUser: false,
               }
             ],
@@ -150,21 +163,108 @@ export const useChat = (userSettings: UserSettings) => {
         }
         return tab;
       }));
-    }, 1000);
+      // Update chat history (last message)
+      const updatedHistory = chatHistory.map(chat => chat.id === activeTabId ? { ...chat, lastMessage: deterministic } : chat);
+      setChatHistory(updatedHistory);
+      localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+      return;
+    }
 
-    // Update chat history
-    const updatedHistory = chatHistory.map(chat => {
-      if (chat.id === activeTabId) {
-        return {
-          ...chat,
-          lastMessage: inputValue,
-        };
+    // Ensure sessionId per tab
+    let sessionId = updatedTabs.find(t => t.id === activeTabId)?.sessionId;
+    try {
+      if (!sessionId) {
+        const apiBase = getApiBaseUrl();
+        const addSessionUrl = joinUrl(apiBase, '/add_session');
+        const r = await fetch(addSessionUrl);
+        if (!r.ok) {
+          throw new Error(`Failed to create session: ${r.status}`);
+        }
+        const j = await r.json();
+        sessionId = j.session_id;
+        if (!sessionId) {
+          throw new Error('Session ID not returned from server');
+        }
+        const tabsWithSession = updatedTabs.map(tab => tab.id === activeTabId ? { ...tab, sessionId } : tab);
+        setTabs(tabsWithSession);
+        localStorage.setItem('chatTabs', JSON.stringify(tabsWithSession));
       }
-      return chat;
-    });
-    
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+
+      // Send chat to backend
+      const apiBase = getApiBaseUrl();
+      const chatUrl = joinUrl(apiBase, '/chat');
+      const resp = await fetch(chatUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          message: userText,
+        }),
+      });
+      if (!resp.ok) {
+        throw new Error(`Chat request failed: ${resp.status}`);
+      }
+      const assistantText = await resp.text();
+      // If the assistant returns an exercise payload, open editor split with LaTeX content
+      let shouldSkipChatDisplay = false;
+      try {
+        const trimmed = assistantText.trim();
+        const openTag = '<exercise>';
+        const closeTag = '</exercise>';
+        if (trimmed.startsWith(openTag) && trimmed.endsWith(closeTag)) {
+          const latexPayload = trimmed.slice(openTag.length, trimmed.length - closeTag.length).trim();
+          setShowEditorSplit(true);
+          setEditorLatex(latexPayload);
+          shouldSkipChatDisplay = true;
+        }
+      } catch (e) {
+        const failedPayload = typeof assistantText === 'string' ? assistantText.trim() : String(assistantText);
+        console.error('Failed to parse <exercise> payload; editor will not open. Error:', e, 'Payload:', failedPayload);
+        // Non-fatal: if parsing fails, continue without opening the editor
+      }
+
+      // Append assistant message
+      setTabs(prevTabs => prevTabs.map(tab => {
+        if (tab.id === activeTabId) {
+          return {
+            ...tab,
+            messages: [
+              ...tab.messages,
+              {
+                id: tab.messages.length + 1,
+                text: shouldSkipChatDisplay ? 'Exercise generated in editor.' : assistantText,
+                isUser: false,
+              }
+            ],
+          };
+        }
+        return tab;
+      }));
+
+      // Update chat history (last message)
+      const updatedHistory = chatHistory.map(chat => chat.id === activeTabId ? { ...chat, lastMessage: assistantText } : chat);
+      setChatHistory(updatedHistory);
+      localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+    } catch (err) {
+      console.error('Chat error:', err);
+      // Append error message
+      setTabs(prevTabs => prevTabs.map(tab => {
+        if (tab.id === activeTabId) {
+          return {
+            ...tab,
+            messages: [
+              ...tab.messages,
+              {
+                id: tab.messages.length + 1,
+                text: 'Error contacting the assistant. Please try again.',
+                isUser: false,
+              }
+            ],
+          };
+        }
+        return tab;
+      }));
+    }
   }, [inputValue, activeTabId, tabs, chatHistory]);
 
   // Create a new tab
@@ -296,6 +396,10 @@ export const useChat = (userSettings: UserSettings) => {
     handleNewTab,
     handleTabClose,
     handleDeleteChat,
+    showEditorSplit,
+    setShowEditorSplit,
+    editorLatex,
+    setEditorLatex,
     navigate
   }), [
     showHistory, 
@@ -308,6 +412,8 @@ export const useChat = (userSettings: UserSettings) => {
     handleNewTab, 
     handleTabClose, 
     handleDeleteChat, 
+    showEditorSplit,
+    editorLatex,
     navigate
   ]);
 }; 

@@ -19,8 +19,27 @@ styleTag.textContent = `
     }
   }
   
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+  }
+  
   .animate-fade-in {
     animation: fade-in 0.2s ease-out forwards;
+  }
+  
+  .animate-fade-out {
+    animation: fade-out 0.2s ease-out forwards;
+  }
+
+  .edit-button-transition {
+    transition: opacity 0.2s ease-out;
   }
 `;
 document.head.appendChild(styleTag);
@@ -40,6 +59,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, darkMode, onEditMessag
   const [editText, setEditText] = useState(message.text);
   const [forceUpdate, setForceUpdate] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
+  const [isFadingOut, setIsFadingOut] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const iconRef = useRef<HTMLImageElement>(null);
 
@@ -115,6 +135,27 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, darkMode, onEditMessag
       onEditPDF();
     }
   }, [message.text, message.isUser, onEditPDF]);
+
+  // Effect to handle the fade out animation
+  useEffect(() => {
+    let fadeOutTimer: NodeJS.Timeout;
+    let hideTimer: NodeJS.Timeout;
+
+    if (isCopied) {
+      fadeOutTimer = setTimeout(() => {
+        setIsFadingOut(true);
+        hideTimer = setTimeout(() => {
+          setIsCopied(false);
+          setIsFadingOut(false);
+        }, 200); // Match the animation duration
+      }, 2000);
+    }
+
+    return () => {
+      clearTimeout(fadeOutTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [isCopied]);
 
   const handleEditSubmit = () => {
     if (onEditMessage && editText.trim() !== '') {
@@ -219,7 +260,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, darkMode, onEditMessag
             </button>
           )}
           {isCopied && (
-            <div className="absolute text-xs text-gray-500 dark:text-gray-400 mt-1 ml-1 animate-fade-in" style={{ top: '100%' }}>
+            <div className={`absolute text-xs text-gray-500 dark:text-gray-400 mt-1 ml-1 ${isFadingOut ? 'animate-fade-out' : 'animate-fade-in'}`} style={{ top: '100%' }}>
               Copied
             </div>
           )}
@@ -247,10 +288,11 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, darkMode, onEditMessag
               <button
                 onClick={() => setIsEditing(true)}
                 className={cn(
-                  "p-1 rounded-full",
+                  "p-1 rounded-full edit-button-transition",
                   "bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700",
                   "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200",
-                  "transition-colors duration-200"
+                  "transition-colors duration-200",
+                  isCopied && "opacity-0 pointer-events-none"
                 )}
                 title="Edit message"
               >
@@ -309,7 +351,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, darkMode, onEditMessag
             </p>
           </button>
           {isCopied && (
-            <div className="absolute text-xs text-gray-500 dark:text-gray-400 mt-1 ml-1 animate-fade-in" style={{ top: '100%' }}>
+            <div className={`absolute text-xs text-gray-500 dark:text-gray-400 mt-1 ml-1 ${isFadingOut ? 'animate-fade-out' : 'animate-fade-in'}`} style={{ top: '100%' }}>
               Copied
             </div>
           )}

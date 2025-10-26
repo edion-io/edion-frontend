@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import type { DragEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserSettings as UserSettingsType } from '../types';
 import ChatHistoryMenu from '../components/ChatHistory';
@@ -7,6 +8,13 @@ import ChatMessages from '../components/ChatMessages';
 import ChatInput from '../components/ChatInput';
 import { useChat } from '../hooks/use-chat';
 import { updateUserSettings, getUserSettingsFromStorage } from '../utils/storageUtils';
+import useEditorSync from '../hooks/useEditorSync';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
+import { AnimatePresence, motion } from 'framer-motion';
+import EditorPane from '../components/EditorPane';
+import ChatPane from '../components/ChatPane';
+
+type PanelSwapDirection = 'left' | 'right' | 'toggle';
 
 const Chat = () => {
   const [userSettings, setUserSettings] = useState<UserSettingsType>(getUserSettingsFromStorage());
@@ -31,6 +39,10 @@ const Chat = () => {
     handleNewTab,
     handleTabClose,
     handleDeleteChat,
+    showEditorSplit,
+    setShowEditorSplit,
+    editorLatex,
+    setEditorLatex,
   } = useChat(userSettings);
 
   const getActiveTab = () => tabs.find(tab => tab.id === activeTabId);
@@ -97,7 +109,47 @@ const Chat = () => {
     };
   }, [userSettings.darkMode]);
 
+  // Editor state and sync logic moved into custom hook
+  const {
+    editorRef,
+    editorContent,
+    setEditorContent,
+    insertMathDelimiters,
+    execFormatCommand,
+    setExecFormatCommand,
+    showRawLatex,
+    setShowRawLatex,
+    editorOnLeft,
+    setEditorOnLeft,
+    isDraggingPane,
+    setIsDraggingPane,
+    dragOverEditor,
+    setDragOverEditor,
+    dragOverChat,
+    setDragOverChat,
+    handleIndent,
+    handleOutdent,
+    insertTable,
+  } = useEditorSync({
+    showEditorSplit,
+    initialLatex: editorLatex || '',
+    onLatexChange: setEditorLatex,
+  });
 
+  const handleKeyboardSwap = (pane: 'editor' | 'chat', direction: PanelSwapDirection) => {
+    if (direction === 'toggle') {
+      setEditorOnLeft(prev => !prev);
+      return;
+    }
+    if (pane === 'editor') {
+      setEditorOnLeft(direction === 'left');
+      return;
+    }
+    // pane === 'chat'
+    setEditorOnLeft(direction === 'right');
+  };
+  
+  // Indentation, table insertion, and LaTeX↔HTML sync handled by useEditorSync
 
   const handleEditMessage = (messageId: number, newText: string) => {
     if (messageId === -1) {
@@ -173,6 +225,65 @@ const Chat = () => {
     );
   }
 
+  // Shared drag and drop helpers
+  const safelySetDropEffectMove = (e: DragEvent<HTMLDivElement>) => {
+    const dt = e.dataTransfer;
+    if (dt && 'dropEffect' in dt) {
+      try {
+        dt.dropEffect = 'move';
+      } catch (err) {
+        const name = (err && (err as { name?: string }).name) || '';
+        if (name === 'SecurityError' || name === 'NotAllowedError' || name === 'InvalidStateError') {
+          // ignore benign browser exceptions when setting dropEffect
+        } else {
+          console.error('Error setting dataTransfer.dropEffect:', err);
+        }
+      }
+    }
+  };
+
+  const handlePaneDragStart = () => {
+    setIsDraggingPane(true);
+    document.body.classList.add('dragging-pane');
+  };
+
+  const handlePaneDragEnd = () => {
+    setIsDraggingPane(false);
+    setDragOverEditor(false);
+    setDragOverChat(false);
+    document.body.classList.remove('dragging-pane');
+  };
+
+  const handleEditorDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    safelySetDropEffectMove(e);
+    setDragOverEditor(true);
+  };
+
+  const handleEditorDrop = (e: DragEvent<HTMLDivElement>, targetIsLeft: boolean) => {
+    e.preventDefault();
+    const src = e.dataTransfer.getData('text/pane');
+    if (src === 'chat') setEditorOnLeft(!targetIsLeft);
+    setDragOverEditor(false);
+    setIsDraggingPane(false);
+    document.body.classList.remove('dragging-pane');
+  };
+
+  const handleChatDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    safelySetDropEffectMove(e);
+    setDragOverChat(true);
+  };
+
+  const handleChatDrop = (e: DragEvent<HTMLDivElement>, targetIsLeft: boolean) => {
+    e.preventDefault();
+    const src = e.dataTransfer.getData('text/pane');
+    if (src === 'editor') setEditorOnLeft(targetIsLeft);
+    setDragOverChat(false);
+    setIsDraggingPane(false);
+    document.body.classList.remove('dragging-pane');
+  };
+
   return (
     <div className="flex h-screen">
       {showHistory && (
@@ -205,24 +316,164 @@ const Chat = () => {
           goToSettings={goToSettings}
         />
 
-          <div className={`flex-1 flex flex-col w-full`}>
-            <ChatMessages
-              key={`messages-${forceUpdate}`}
-              activeTab={activeTab}
-              darkMode={userSettings.darkMode}
-              onEditMessage={handleEditMessage}
-            />
-            <div className="relative">
-              <ChatInput
-                key={`input-${forceUpdate}`}
-                inputValue={inputValue}
-                setInputValue={setInputValue}
-                onSubmit={handleSubmit}
-              />
-            </div>
-          </div>
-        </div>
+        <AnimatePresence mode="wait" initial={false}>
+          {showEditorSplit ? (
+            <motion.div
+              key="split"
+              className="flex-1 flex w-full min-h-0"
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+            >
+              <ResizablePanelGroup direction="horizontal" className="w-full min-h-0">
+                {(() => {
+                  const panels = editorOnLeft
+                    ? [
+                        (
+                          <ResizablePanel defaultSize={50} minSize={20} key="editor">
+                            <EditorPane
+                              dragOver={dragOverEditor}
+                              targetIsLeft
+                              onDragOver={handleEditorDragOver}
+                              onDragEnter={() => setDragOverEditor(true)}
+                              onDragLeave={() => setDragOverEditor(false)}
+                              onDrop={(e) => handleEditorDrop(e, true)}
+                              isDraggingPane={isDraggingPane}
+                              onDragStart={handlePaneDragStart}
+                              onDragEnd={handlePaneDragEnd}
+                              onKeySwap={(dir) => handleKeyboardSwap('editor', dir)}
+                              showRawLatex={showRawLatex}
+                              toggleRawLatex={() => setShowRawLatex(v => !v)}
+                              insertMathDelimiters={insertMathDelimiters}
+                              insertTable={insertTable}
+                              handleIndent={handleIndent}
+                              handleOutdent={handleOutdent}
+                              editorRef={editorRef}
+                              editorContent={editorContent}
+                              setEditorContent={setEditorContent}
+                              execFormatCommand={execFormatCommand}
+                              setExecFormatCommand={setExecFormatCommand}
+                              editorLatex={editorLatex || ''}
+                              setEditorLatex={setEditorLatex}
+                            />
+                          </ResizablePanel>
+                        ),
+                        <ResizableHandle withHandle key="handle" />,
+                        (
+                          <ResizablePanel defaultSize={50} minSize={20} key="chat">
+                            <ChatPane
+                              dragOver={dragOverChat}
+                              targetIsLeft={false}
+                              onDragOver={handleChatDragOver}
+                              onDragEnter={() => setDragOverChat(true)}
+                              onDragLeave={() => setDragOverChat(false)}
+                              onDrop={(e) => handleChatDrop(e, false)}
+                              isDraggingPane={isDraggingPane}
+                              onDragStart={handlePaneDragStart}
+                              onDragEnd={handlePaneDragEnd}
+                              onKeySwap={(dir) => handleKeyboardSwap('chat', dir)}
+                              forceUpdate={forceUpdate}
+                              activeTab={activeTab}
+                              darkMode={userSettings.darkMode}
+                              onEditMessage={handleEditMessage}
+                              inputValue={inputValue}
+                              setInputValue={setInputValue}
+                              onSubmit={handleSubmit}
+                            />
+                          </ResizablePanel>
+                        ),
+                      ]
+                    : [
+                        (
+                          <ResizablePanel defaultSize={50} minSize={20} key="chat">
+                            <ChatPane
+                              dragOver={dragOverChat}
+                              targetIsLeft
+                              onDragOver={handleChatDragOver}
+                              onDragEnter={() => setDragOverChat(true)}
+                              onDragLeave={() => setDragOverChat(false)}
+                              onDrop={(e) => handleChatDrop(e, true)}
+                              isDraggingPane={isDraggingPane}
+                              onDragStart={handlePaneDragStart}
+                              onDragEnd={handlePaneDragEnd}
+                              onKeySwap={(dir) => handleKeyboardSwap('chat', dir)}
+                              forceUpdate={forceUpdate}
+                              activeTab={activeTab}
+                              darkMode={userSettings.darkMode}
+                              onEditMessage={handleEditMessage}
+                              inputValue={inputValue}
+                              setInputValue={setInputValue}
+                              onSubmit={handleSubmit}
+                            />
+                          </ResizablePanel>
+                        ),
+                        <ResizableHandle withHandle key="handle" />,
+                        (
+                          <ResizablePanel defaultSize={50} minSize={20} key="editor">
+                            <EditorPane
+                              dragOver={dragOverEditor}
+                              targetIsLeft={false}
+                              onDragOver={handleEditorDragOver}
+                              onDragEnter={() => setDragOverEditor(true)}
+                              onDragLeave={() => setDragOverEditor(false)}
+                              onDrop={(e) => handleEditorDrop(e, false)}
+                              isDraggingPane={isDraggingPane}
+                              onDragStart={handlePaneDragStart}
+                              onDragEnd={handlePaneDragEnd}
+                              onKeySwap={(dir) => handleKeyboardSwap('editor', dir)}
+                              showRawLatex={showRawLatex}
+                              toggleRawLatex={() => setShowRawLatex(v => !v)}
+                              insertMathDelimiters={insertMathDelimiters}
+                              insertTable={insertTable}
+                              handleIndent={handleIndent}
+                              handleOutdent={handleOutdent}
+                              editorRef={editorRef}
+                              editorContent={editorContent}
+                              setEditorContent={setEditorContent}
+                              execFormatCommand={execFormatCommand}
+                              setExecFormatCommand={setExecFormatCommand}
+                              editorLatex={editorLatex || ''}
+                              setEditorLatex={setEditorLatex}
+                            />
+                          </ResizablePanel>
+                        ),
+                      ];
+                  return panels;
+                })()}
+              </ResizablePanelGroup>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="single"
+              className="flex-1 flex w-full min-h-0"
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 16 }}
+              transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+            >
+              <div className="w-full flex flex-col">
+                <ChatMessages
+                  key={`messages-${forceUpdate}`}
+                  activeTab={activeTab}
+                  darkMode={userSettings.darkMode}
+                  onEditMessage={handleEditMessage}
+                  reserveForFixedComposer
+                />
+                <div className="relative">
+                  <ChatInput
+                    key={`input-${forceUpdate}`}
+                    inputValue={inputValue}
+                    setInputValue={setInputValue}
+                    onSubmit={handleSubmit}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+    </div>
   );
 };
 

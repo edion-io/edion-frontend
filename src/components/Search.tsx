@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChatHistoryItem, ChatTab } from '../types';
 import { cn } from '@/lib/utils';
 import FileUploadMenu from './FileUploadMenu';
+import { getDeterministicResponse, getFallbackMessage } from '@/lib/intentMappings';
+import { showErrorToast } from '@/utils/toastUtils';
 
 const Search = () => {
   const [searchInput, setSearchInput] = useState("");
@@ -37,6 +39,18 @@ const Search = () => {
       localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
       
       // Create initial tab data
+      let deterministic: string | null = null;
+      try {
+        deterministic = getDeterministicResponse(searchInput);
+      } catch (err) {
+        console.error("getDeterministicResponse failed", err);
+        showErrorToast(
+          "Couldn't generate a precise reply",
+          "Showing a generic helper message instead."
+        );
+        deterministic = null; // safe fallback ensures UI remains stable
+      }
+
       const newTab: ChatTab = {
         id: newChatId,
         title: searchInput,
@@ -49,7 +63,7 @@ const Search = () => {
           },
           {
             id: 2,
-            text: "Hello! I'm here to help. What can I assist you with today?",
+            text: (deterministic ?? getFallbackMessage(searchInput)),
             isUser: false,
           }
         ],
